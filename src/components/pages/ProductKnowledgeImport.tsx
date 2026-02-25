@@ -25,7 +25,7 @@ import {
   ProductNameTypes,
 } from "@/types/inventory/productKnowledge/productKnowledge";
 import { parseCsvText } from "@/utils/csv";
-import { createHashSuffix, createSlug } from "@/utils/slug";
+import { createSlug } from "@/utils/slug";
 
 interface ProductKnowledgeImportProps {
   facilityId?: string;
@@ -247,7 +247,7 @@ Medicines,,Paracetamol,medication,Paracetamol,12345,tablet,Tablet,123456,123456,
         product_type: datapoint.productType,
         status: ProductKnowledgeStatus.active,
         base_unit: datapoint.baseUnit,
-        category: `f-${facilityId}-pk-${createSlug(datapoint.resourceCategory)}`,
+  category: `f-${facilityId}-pk-${await createSlug(datapoint.resourceCategory)}`,
         names: [],
         storage_guidelines: [],
         is_instance_level: false,
@@ -614,7 +614,7 @@ function getValidatedDatapoint(
 }
 
 async function createProductKnowledgeSlug(name: string) {
-  return `${createSlug(name).slice(0, 20)}-${await createHashSuffix(name)}`;
+  return await createSlug(name);
 }
 
 async function resolveDatapoint(
@@ -638,9 +638,18 @@ async function upsertResourceCategories(
   const existingSlugs = new Set(
     existingCategories.results.map((cat) => cat.slug_config.slug_value),
   );
-  const newDatapoints = resourceCategories.filter(
-    (cat) => !existingSlugs.has(`pk-${createSlug(cat)}`),
+  const categoryEntries = await Promise.all(
+    resourceCategories.map(async (category) => ({
+      category,
+      slug: await createSlug(category),
+    })),
   );
+  const categorySlugMap = new Map(
+    categoryEntries.map(({ category, slug }) => [category, slug]),
+  );
+  const newDatapoints = categoryEntries
+    .filter(({ slug }) => !existingSlugs.has(`pk-${slug}`))
+    .map(({ category }) => category);
 
   if (newDatapoints.length === 0) {
     return;
@@ -649,12 +658,18 @@ async function upsertResourceCategories(
   await request(`/api/v1/facility/${facilityId}/resource_category/upsert/`, {
     method: "POST",
     body: JSON.stringify({
-      datapoints: newDatapoints.map((data) => ({
-        title: data,
-        slug_value: `pk-${createSlug(data)}`,
-        resource_type: ResourceCategoryResourceType.product_knowledge,
-        resource_sub_type: ResourceCategorySubType.other,
-      })),
+      datapoints: newDatapoints.map((data) => {
+        const slug = categorySlugMap.get(data);
+        if (!slug) {
+          throw new Error(`Missing slug for category: ${data}`);
+        }
+        return {
+          title: data,
+          slug_value: `pk-${slug}`,
+          resource_type: ResourceCategoryResourceType.product_knowledge,
+          resource_sub_type: ResourceCategorySubType.other,
+        };
+      }),
     }),
   });
 }

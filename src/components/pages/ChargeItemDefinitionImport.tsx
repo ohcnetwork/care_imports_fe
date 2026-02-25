@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import {
+  ResourceCategoryRead,
   ResourceCategoryResourceType,
   ResourceCategorySubType,
 } from "@/types/base/resourceCategory/resourceCategory";
@@ -21,7 +22,7 @@ import {
   ChargeItemDefinitionStatus,
 } from "@/types/billing/chargeItemDefinition/chargeItemDefinition";
 import { parseCsvText } from "@/utils/csv";
-import { createHashSuffix, createSlug } from "@/utils/slug";
+import { createSlug } from "@/utils/slug";
 
 interface ChargeItemImportProps {
   facilityId?: string;
@@ -183,21 +184,36 @@ Bed Charges,Per day bed charge,Bed usage,1500`;
 
     if (!facilityId) return;
 
-    await request(`/api/v1/facility/${facilityId}/resource_category/`, {
-      method: "POST",
-      body: JSON.stringify({
-        title: categoryTitle,
-        slug_value: createSlug(categoryTitle),
-        resource_type: ResourceCategoryResourceType.charge_item_definition,
-        resource_sub_type: ResourceCategorySubType.other,
-      }),
-    });
+    const existingCategories = (await request(
+      `/api/v1/facility/${facilityId}/resource_category/?limit=100&resource_type=${ResourceCategoryResourceType.charge_item_definition}&resource_sub_type=${ResourceCategorySubType.other}`,
+      { method: "GET" },
+    )) as { results: ResourceCategoryRead[] };
 
-    const resourceCategorySlug = `f-${facilityId}-${createSlug(categoryTitle)}`;
+    const normalizedTitle = categoryTitle.trim().toLowerCase();
+    const existingCategory = existingCategories.results.find(
+      (category) => category.title.trim().toLowerCase() === normalizedTitle,
+    );
+
+    let categorySlug = existingCategory?.slug_config.slug_value;
+
+    if (!categorySlug) {
+      categorySlug = await createSlug(categoryTitle);
+      await request(`/api/v1/facility/${facilityId}/resource_category/`, {
+        method: "POST",
+        body: JSON.stringify({
+          title: categoryTitle,
+          slug_value: categorySlug,
+          resource_type: ResourceCategoryResourceType.charge_item_definition,
+          resource_sub_type: ResourceCategorySubType.other,
+        }),
+      });
+    }
+
+    const resourceCategorySlug = `f-${facilityId}-${categorySlug}`;
 
     for (const row of validRows) {
       try {
-        const slug = `${createSlug(row.data.title).slice(0, 20)}-${await createHashSuffix(row.data.title)}`;
+        const slug = await createSlug(row.data.title);
 
         const payload: ChargeItemDefinitionCreate = {
           title: row.data.title,
@@ -215,7 +231,7 @@ Bed Charges,Per day bed charge,Bed usage,1500`;
           ],
         };
 
-        const url = `/api/v1/facility/${facilityId}/charge_item_definition/${slug}/`;
+        const url = `/api/v1/facility/${facilityId}/charge_item_definition/f-${facilityId}-${slug}/`;
 
         try {
           await request(url, { method: "GET" });

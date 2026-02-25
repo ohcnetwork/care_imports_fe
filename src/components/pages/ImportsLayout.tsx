@@ -13,6 +13,7 @@ import {
 export type ImportTabId =
   | "users"
   | "departments"
+  | "link-users"
   | "locations"
   | "charge-item-definition"
   | "product-knowledge";
@@ -41,6 +42,11 @@ const getTabConfig = () => [
     id: "departments" as const,
     label: "Departments",
     path: "/admin/import/departments",
+  },
+  {
+    id: "link-users" as const,
+    label: "Link Users",
+    path: "/admin/import/link-users",
   },
   {
     id: "locations" as const,

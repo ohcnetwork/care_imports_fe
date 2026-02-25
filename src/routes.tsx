@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import ChargeItemDefinitionImport from "@/components/pages/ChargeItemDefinitionImport";
 import DepartmentImport from "@/components/pages/DepartmentImport";
 import ImportsLayout, { ImportTabId } from "@/components/pages/ImportsLayout";
+import LinkUsersImport from "@/components/pages/LinkUsersImport";
 import LocationImport from "@/components/pages/LocationImport";
 import ProductKnowledgeImport from "@/components/pages/ProductKnowledgeImport";
 import UsersImportPage from "@/components/pages/UsersImport";
@@ -17,6 +18,8 @@ const routes = {
   "/admin/import/users": () => renderImportsPage("users", <UsersImportPage />),
   "/admin/import/departments": () =>
     renderImportsPage("departments", <DepartmentImport />),
+  "/admin/import/link-users": () =>
+    renderImportsPage("link-users", <LinkUsersImport />),
   "/admin/import/locations": () =>
     renderImportsPage("locations", <LocationImport />),
   "/admin/import/charge-item-definition": () =>
