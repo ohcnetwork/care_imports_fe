@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, Upload } from "lucide-react";
+import { AlertCircle, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { APIError, request } from "@/apis/request";
@@ -24,10 +24,10 @@ import {
   Preference,
   ProcessedRow,
   QuantitySpec,
-  SpecimenDefinitionImportProps,
-  SpecimenRow,
   SpecimenDefinitionCreate,
+  SpecimenDefinitionImportProps,
   SpecimenDefinitionStatus,
+  SpecimenRow,
   TypeTestedSpec,
 } from "@/types/emr/specimenDefinition/specimenDefinition";
 
@@ -136,7 +136,6 @@ export default function SpecimenDefinitionImport({
   const [lookupStatus, setLookupStatus] = useState<
     "idle" | "loading" | "ready" | "error"
   >("idle");
-  const [lookupIssues, setLookupIssues] = useState<string[]>([]);
   const [lastLookupSignature, setLastLookupSignature] = useState<string>("");
 
   const summary = useMemo(() => {
@@ -164,14 +163,11 @@ export default function SpecimenDefinitionImport({
 
   const resolveCodeLookups = useCallback(async () => {
     if (!lookupSignature) {
-      setLookupIssues([]);
       setLookupStatus("ready");
       return;
     }
 
     setLookupStatus("loading");
-    setLookupIssues([]);
-
     const invalidSignatures = new Set<string>();
     const issues: string[] = [];
 
@@ -192,7 +188,6 @@ export default function SpecimenDefinitionImport({
       }),
     );
 
-    setLookupIssues(issues);
     setLookupStatus(issues.length ? "error" : "ready");
     setLastLookupSignature(lookupSignature);
 
@@ -201,7 +196,9 @@ export default function SpecimenDefinitionImport({
         const updatedErrors = stripLookupErrors(row.errors);
         row.codeReferences.forEach((ref) => {
           if (invalidSignatures.has(ref.signature)) {
-            updatedErrors.push(`${CODE_ERROR_PREFIX} ${ref.label}`);
+            updatedErrors.push(
+              `${CODE_ERROR_PREFIX} ${ref.label} (${ref.code.system} | ${ref.code.code})`,
+            );
           }
         });
         return {
@@ -578,7 +575,6 @@ export default function SpecimenDefinitionImport({
         setUploadedFileName(file.name);
         setProcessedRows(processed);
         setResults(null);
-        setLookupIssues([]);
         setLookupStatus("idle");
         setLastLookupSignature("");
         setCurrentStep("review");
@@ -921,65 +917,41 @@ export default function SpecimenDefinitionImport({
               <Badge variant="secondary">Invalid: {summary.invalid}</Badge>
             </div>
 
-            {(lookupStatus === "loading" || lookupIssues.length > 0) && (
-              <Alert
-                className="mb-4"
-                variant={lookupIssues.length > 0 ? "destructive" : "default"}
-              >
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  {lookupStatus === "loading" &&
-                    "Validating codes via value set lookup..."}
-                  {lookupIssues.length > 0 && (
-                    <div className="space-y-1">
-                      {lookupIssues.map((issue) => (
-                        <div key={issue}>{issue}</div>
-                      ))}
-                    </div>
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
-
             <div className="border border-gray-200 rounded-lg overflow-hidden">
-              <div className="max-h-80 overflow-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-gray-50 text-gray-600">
-                    <tr>
-                      <th className="px-4 py-2 text-left">Row</th>
-                      <th className="px-4 py-2 text-left">Title</th>
-                      <th className="px-4 py-2 text-left">Status</th>
-                      <th className="px-4 py-2 text-left">Issues</th>
+              <table className="w-full table-fixed text-sm">
+                <thead className="bg-gray-50 text-gray-600">
+                  <tr>
+                    <th className="px-4 py-2 text-left w-14">Row</th>
+                    <th className="px-4 py-2 text-left w-1/3">Title</th>
+                    <th className="px-4 py-2 text-left w-24">Status</th>
+                    <th className="px-4 py-2 text-left">Message</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {processedRows.map((row) => (
+                    <tr key={row.rowIndex} className="border-t border-gray-100">
+                      <td className="px-4 py-2 text-gray-500 align-top">
+                        {row.rowIndex}
+                      </td>
+                      <td className="px-4 py-2 align-top whitespace-normal break-words">
+                        {row.data.title}
+                      </td>
+                      <td className="px-4 py-2 align-top">
+                        {row.errors.length === 0 ? (
+                          <span className="text-emerald-700">Valid</span>
+                        ) : (
+                          <span className="text-red-600">Invalid</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-gray-600 align-top whitespace-normal break-words">
+                        {row.errors.length > 0
+                          ? row.errors.join("; ")
+                          : "All checks passed"}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {processedRows.map((row) => (
-                      <tr
-                        key={row.rowIndex}
-                        className="border-t border-gray-100"
-                      >
-                        <td className="px-4 py-2 text-gray-500">
-                          {row.rowIndex}
-                        </td>
-                        <td className="px-4 py-2">{row.data.title}</td>
-                        <td className="px-4 py-2">
-                          {row.errors.length === 0 ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-700">
-                              <CheckCircle2 className="h-4 w-4" />
-                              Valid
-                            </span>
-                          ) : (
-                            <span className="text-red-600">Invalid</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-xs text-gray-600">
-                          {row.errors.length > 0 ? row.errors.join("; ") : "-"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
 
             <div className="flex justify-between mt-6">
@@ -1093,7 +1065,6 @@ export default function SpecimenDefinitionImport({
                 setResults(null);
                 setUploadedFileName("");
                 setUploadError("");
-                setLookupIssues([]);
                 setLookupStatus("idle");
                 setLastLookupSignature("");
                 setCurrentStep("upload");
