@@ -1,129 +1,133 @@
 import { useEffect, useState } from "react";
 
-export type DatasetId =
-  | "product-knowledge"
-  | "specimen-definition"
-  | "observation-definition"
-  | "activity-definition";
-
-export const DATASET_ORDER: DatasetId[] = [
-  "product-knowledge",
-  "specimen-definition",
-  "observation-definition",
-  "activity-definition",
-];
-
 export interface MasterDataFile {
-  /** Full URL to the CSV file */
+  /** Raw download URL for the CSV file */
   url: string;
-  /** Filename extracted from the path (e.g. "product_knowledge.csv") */
+  /** Filename (e.g. "product_knowledge.csv") */
   name: string;
 }
 
+const REPO = import.meta.env.REACT_MASTER_DATA_REPO as string | undefined;
+const BRANCH = (import.meta.env.REACT_MASTER_DATA_BRANCH as string) || "main";
+
+/** GitHub Contents API entry */
+interface GitHubContentEntry {
+  name: string;
+  path: string;
+  type: "file" | "dir";
+  download_url: string | null;
+}
+
 /**
- * Resolves the manifest's file entries for a given dataset.
+ * index.json in the master data repo.
  *
- * New format — array of relative paths:
- *   "product-knowledge": ["product-knowledge/medications.csv", ...]
- *
- * Legacy format — single string (backwards compatible):
- *   "product-knowledge": "product_knowledge.csv"
+ * Maps dataset keys (used by import pages) to actual folder paths in the repo:
+ * {
+ *   "datasets": {
+ *     "product-knowledge": "product_knowledge",
+ *     "specimen-definition": "specimen_definition",
+ *     ...
+ *   }
+ * }
  */
-const resolveManifestFiles = (
-  manifest: Record<string, unknown>,
-  datasetId: DatasetId,
-): string[] => {
-  const value = manifest[datasetId] ?? manifest[datasetId.replace(/-/g, "_")];
+interface MasterDataIndex {
+  datasets: Record<string, string>;
+}
 
-  if (Array.isArray(value)) {
-    return value.filter((v): v is string => typeof v === "string");
-  }
+type Status = "idle" | "loading" | "ready" | "error";
 
-  if (typeof value === "string" && value.length > 0) {
-    return [value];
-  }
-
-  return [];
-};
-
-const resolveManifestBase = (manifest: unknown) => {
-  if (!manifest || typeof manifest !== "object") return "/";
-  const record = manifest as Record<string, unknown>;
-  const base =
-    (typeof record.basePath === "string" && record.basePath) ||
-    (typeof record.base_path === "string" && record.base_path) ||
-    (typeof record.baseUrl === "string" && record.baseUrl) ||
-    (typeof record.base_url === "string" && record.base_url) ||
-    "/";
-  return base.endsWith("/") ? base : `${base}/`;
-};
-
-type ManifestStatus = "idle" | "loading" | "ready" | "error";
-
-const buildEmptyFiles = () =>
-  DATASET_ORDER.reduce<Record<DatasetId, MasterDataFile[]>>(
-    (acc, datasetId) => {
-      acc[datasetId] = [];
-      return acc;
-    },
-    {} as Record<DatasetId, MasterDataFile[]>,
-  );
-
-const buildEmptyAvailability = () =>
-  DATASET_ORDER.reduce<Record<DatasetId, boolean>>(
-    (acc, datasetId) => {
-      acc[datasetId] = false;
-      return acc;
-    },
-    {} as Record<DatasetId, boolean>,
-  );
-
+/**
+ * Fetches CSV file listings from a public GitHub repo.
+ *
+ * 1. Fetches index.json from the repo root to discover available datasets
+ * 2. For each dataset, calls GitHub Contents API to list CSV files
+ *
+ * Env vars:
+ *   REACT_MASTER_DATA_REPO   — "owner/repo" (e.g. "ohcnetwork/care-master-data")
+ *   REACT_MASTER_DATA_BRANCH — branch name (defaults to "main")
+ */
 export const useMasterDataAvailability = () => {
-  const [status, setStatus] = useState<ManifestStatus>("idle");
+  const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState("");
-  const [files, setFiles] =
-    useState<Record<DatasetId, MasterDataFile[]>>(buildEmptyFiles());
-  const [availability, setAvailability] = useState<Record<DatasetId, boolean>>(
-    buildEmptyAvailability(),
-  );
+  const [files, setFiles] = useState<Record<string, MasterDataFile[]>>({});
+  const [availability, setAvailability] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let active = true;
 
-    const loadManifest = async () => {
+    const load = async () => {
+      if (!REPO) {
+        setStatus("error");
+        setError(
+          "REACT_MASTER_DATA_REPO is not configured. Set it to 'owner/repo' (e.g. ohcnetwork/care-master-data).",
+        );
+        return;
+      }
+
       setStatus("loading");
       setError("");
 
       try {
-        const manifestUrl = new URL("/manifest.json", import.meta.url);
-        const response = await fetch(manifestUrl.toString(), {
-          cache: "no-store",
-        });
-        if (!response.ok) {
-          throw new Error("Manifest not found");
+        // 1. Fetch index.json from the repo
+        const indexUrl = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/index.json`;
+        const indexResponse = await fetch(indexUrl, { cache: "no-store" });
+        if (!indexResponse.ok) {
+          throw new Error(
+            "index.json not found in the master data repository.",
+          );
+        }
+        const index = (await indexResponse.json()) as MasterDataIndex;
+
+        if (!index.datasets || typeof index.datasets !== "object") {
+          throw new Error("index.json is missing a valid 'datasets' field.");
         }
 
-        const manifest = (await response.json()) as Record<string, unknown>;
-        const basePath = resolveManifestBase(manifest);
-        const baseUrl = new URL(basePath, manifestUrl);
+        const resolvedFiles: Record<string, MasterDataFile[]> = {};
+        const resolvedAvailability: Record<string, boolean> = {};
 
-        const resolvedFiles = buildEmptyFiles();
+        // Initialize all datasets from index
+        for (const key of Object.keys(index.datasets)) {
+          resolvedFiles[key] = [];
+          resolvedAvailability[key] = false;
+        }
 
-        DATASET_ORDER.forEach((datasetId) => {
-          const relativePaths = resolveManifestFiles(manifest, datasetId);
-          resolvedFiles[datasetId] = relativePaths.map((relativePath) => {
-            const url = relativePath.startsWith("http")
-              ? relativePath
-              : new URL(relativePath.replace(/^\//, ""), baseUrl).toString();
-            const name = relativePath.split("/").pop() ?? relativePath;
-            return { url, name };
-          });
-        });
+        // 2. For each dataset, list CSV files via GitHub Contents API
+        await Promise.all(
+          Object.entries(index.datasets).map(
+            async ([datasetKey, folderPath]) => {
+              const apiUrl = `https://api.github.com/repos/${REPO}/contents/${folderPath}?ref=${BRANCH}`;
 
-        const resolvedAvailability = buildEmptyAvailability();
-        DATASET_ORDER.forEach((datasetId) => {
-          resolvedAvailability[datasetId] = resolvedFiles[datasetId].length > 0;
-        });
+              try {
+                const response = await fetch(apiUrl, {
+                  headers: { Accept: "application/vnd.github.v3+json" },
+                  cache: "no-store",
+                });
+
+                if (!response.ok) return;
+
+                const entries = (await response.json()) as GitHubContentEntry[];
+
+                const csvFiles: MasterDataFile[] = entries
+                  .filter(
+                    (entry) =>
+                      entry.type === "file" && entry.name.endsWith(".csv"),
+                  )
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((entry) => ({
+                    name: entry.name,
+                    url:
+                      entry.download_url ??
+                      `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${entry.path}`,
+                  }));
+
+                resolvedFiles[datasetKey] = csvFiles;
+                resolvedAvailability[datasetKey] = csvFiles.length > 0;
+              } catch {
+                // Network error for this folder — skip
+              }
+            },
+          ),
+        );
 
         if (!active) return;
 
@@ -133,13 +137,15 @@ export const useMasterDataAvailability = () => {
       } catch (err) {
         if (!active) return;
         setStatus("error");
-        setFiles(buildEmptyFiles());
-        setAvailability(buildEmptyAvailability());
-        setError(err instanceof Error ? err.message : "Manifest unavailable");
+        setFiles({});
+        setAvailability({});
+        setError(
+          err instanceof Error ? err.message : "Failed to load master data",
+        );
       }
     };
 
-    loadManifest();
+    load();
 
     return () => {
       active = false;

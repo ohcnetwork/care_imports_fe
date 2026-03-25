@@ -62,7 +62,7 @@ export default function MasterDataFileSelector({
         <CardHeader>
           <CardTitle>Select a Master Data File — {title}</CardTitle>
           <CardDescription>
-            Choose which CSV file to import from the bundled master dataset.
+            Choose which CSV file to import from the master data repository.
           </CardDescription>
         </CardHeader>
         <CardContent>
