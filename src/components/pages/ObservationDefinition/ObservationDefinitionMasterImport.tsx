@@ -20,25 +20,27 @@ import {
 
 interface ObservationDefinitionMasterImportProps {
   facilityId?: string;
-  initialCsvText: string;
+  defsCsvText: string;
+  compCsvText: string;
   onBack: () => void;
 }
 
 export default function ObservationDefinitionMasterImport({
   facilityId,
-  initialCsvText,
+  defsCsvText,
+  compCsvText,
   onBack,
 }: ObservationDefinitionMasterImportProps) {
   const [currentStep, setCurrentStep] = useState<
     "review" | "importing" | "done"
   >("review");
   const [processedRows] = useState<ObservationProcessedRow[]>(() =>
-    parseObservationDefinitionCsv(initialCsvText),
+    parseObservationDefinitionCsv(defsCsvText, compCsvText),
   );
   const [selectedRowIds, setSelectedRowIds] = useState<Set<number>>(
     () =>
       new Set(
-        parseObservationDefinitionCsv(initialCsvText)
+        parseObservationDefinitionCsv(defsCsvText, compCsvText)
           .filter((row) => row.errors.length === 0)
           .map((row) => row.rowIndex),
       ),

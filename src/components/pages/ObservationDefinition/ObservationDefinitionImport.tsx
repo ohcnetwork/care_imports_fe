@@ -9,7 +9,10 @@ import {
 } from "@/components/ui/card";
 import { disableOverride } from "@/config";
 import { useMasterDataAvailability } from "@/hooks/useMasterDataAvailability";
-import { generateSampleCsv } from "@/utils/observationDefinitionConstants";
+import {
+  generateSampleComponentsCsv,
+  generateSampleDefinitionsCsv,
+} from "@/utils/observationDefinitionConstants";
 import { AlertCircle, Database, Upload } from "lucide-react";
 import { useState } from "react";
 
@@ -23,9 +26,9 @@ interface ObservationDefinitionImportProps {
 
 type ActiveView =
   | { kind: "upload" }
-  | { kind: "csv"; csvText: string }
+  | { kind: "csv"; defsCsvText: string; compCsvText: string }
   | { kind: "master-select" }
-  | { kind: "master"; csvText: string };
+  | { kind: "master"; defsCsvText: string; compCsvText: string };
 
 export default function ObservationDefinitionImport({
   facilityId,
@@ -46,42 +49,105 @@ export default function ObservationDefinitionImport({
       setUploadedFileName("");
       return;
     }
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const fileList = event.target.files;
+    if (!fileList || fileList.length === 0) return;
 
-    if (file.type !== "text/csv" && !file.name.endsWith(".csv")) {
-      setUploadError("Please upload a valid CSV file");
+    const csvFiles = Array.from(fileList).filter(
+      (f) => f.type === "text/csv" || f.name.endsWith(".csv"),
+    );
+
+    if (csvFiles.length === 0) {
+      setUploadError("Please upload valid CSV files");
       setUploadedFileName("");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const csvText = e.target?.result as string;
+    if (csvFiles.length !== 2) {
+      setUploadError(
+        "Please select exactly 2 CSV files: one for observation definitions and one for components.",
+      );
+      setUploadedFileName("");
+      return;
+    }
+
+    const readPromises = csvFiles.map(
+      (file) =>
+        new Promise<{ name: string; text: string }>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            resolve({ name: file.name, text: e.target?.result as string });
+          };
+          reader.onerror = () =>
+            reject(new Error(`Error reading ${file.name}`));
+          reader.readAsText(file);
+        }),
+    );
+
+    Promise.all(readPromises)
+      .then((results) => {
+        // Auto-detect which CSV is which by checking for "observation_slug" header
+        let defsCsvText: string | null = null;
+        let compCsvText: string | null = null;
+        const names: string[] = [];
+
+        for (const { name, text } of results) {
+          const firstLine = text.split(/\r?\n/)[0] ?? "";
+          const headers = firstLine.toLowerCase().replace(/[^a-z0-9_,]/g, "");
+          if (headers.includes("observation_slug")) {
+            compCsvText = text;
+          } else {
+            defsCsvText = text;
+          }
+          names.push(name);
+        }
+
+        if (!defsCsvText) {
+          setUploadError(
+            'Could not identify the definitions CSV. Make sure one file does NOT have an "observation_slug" header.',
+          );
+          setUploadedFileName("");
+          return;
+        }
+
+        if (!compCsvText) {
+          setUploadError(
+            'Could not identify the components CSV. Make sure one file has an "observation_slug" header.',
+          );
+          setUploadedFileName("");
+          return;
+        }
+
         setUploadError("");
-        setUploadedFileName(file.name);
-        setActiveView({ kind: "csv", csvText });
-      } catch {
-        setUploadError("Error reading CSV file");
-      }
-    };
-    reader.readAsText(file);
+        setUploadedFileName(names.join(", "));
+        setActiveView({ kind: "csv", defsCsvText, compCsvText });
+      })
+      .catch(() => {
+        setUploadError("Error reading CSV files");
+      });
   };
 
   const handleBundledImport = () => {
     setActiveView({ kind: "master-select" });
   };
 
-  const downloadSample = () => {
-    const sampleCSV = generateSampleCsv();
-    const blob = new Blob([sampleCSV], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "sample_observation_definition.csv";
-    a.click();
-    window.URL.revokeObjectURL(url);
+  const downloadSampleCsvs = () => {
+    const defsCsv = generateSampleDefinitionsCsv();
+    const defsBlob = new Blob([defsCsv], { type: "text/csv" });
+    const defsUrl = window.URL.createObjectURL(defsBlob);
+    const defsLink = document.createElement("a");
+    defsLink.href = defsUrl;
+    defsLink.download = "sample_observation_definitions.csv";
+    defsLink.click();
+    window.URL.revokeObjectURL(defsUrl);
+
+    const compCsv = generateSampleComponentsCsv();
+    const compBlob = new Blob([compCsv], { type: "text/csv" });
+    const compUrl = window.URL.createObjectURL(compBlob);
+    const compLink = document.createElement("a");
+    compLink.href = compUrl;
+    compLink.download = "sample_observation_components.csv";
+    compLink.click();
+    window.URL.revokeObjectURL(compUrl);
   };
 
   const handleBack = () => {
@@ -93,7 +159,8 @@ export default function ObservationDefinitionImport({
     return (
       <ObservationDefinitionCsvImport
         facilityId={facilityId}
-        initialCsvText={activeView.csvText}
+        defsCsvText={activeView.defsCsvText}
+        compCsvText={activeView.compCsvText}
         onBack={handleBack}
       />
     );
@@ -104,7 +171,30 @@ export default function ObservationDefinitionImport({
       <MasterDataFileSelector
         title="Observation Definitions"
         files={files["observation-definition"]}
-        onFileSelected={(csvText) => setActiveView({ kind: "master", csvText })}
+        selectCount={2}
+        onFilesSelected={(selectedFiles) => {
+          let defsCsvText: string | null = null;
+          let compCsvText: string | null = null;
+
+          for (const { csvText } of selectedFiles) {
+            const firstLine = csvText.split(/\r?\n/)[0] ?? "";
+            const headers = firstLine.toLowerCase().replace(/[^a-z0-9_,]/g, "");
+            if (headers.includes("observation_slug")) {
+              compCsvText = csvText;
+            } else {
+              defsCsvText = csvText;
+            }
+          }
+
+          if (!defsCsvText || !compCsvText) {
+            // Shouldn't happen with properly formatted master data,
+            // but fall back gracefully: treat both as definitions
+            defsCsvText = defsCsvText ?? selectedFiles[0]?.csvText ?? "";
+            compCsvText = compCsvText ?? selectedFiles[1]?.csvText ?? "";
+          }
+
+          setActiveView({ kind: "master", defsCsvText, compCsvText });
+        }}
         onBack={handleBack}
       />
     );
@@ -114,7 +204,8 @@ export default function ObservationDefinitionImport({
     return (
       <ObservationDefinitionMasterImport
         facilityId={facilityId}
-        initialCsvText={activeView.csvText}
+        defsCsvText={activeView.defsCsvText}
+        compCsvText={activeView.compCsvText}
         onBack={handleBack}
       />
     );
@@ -129,8 +220,8 @@ export default function ObservationDefinitionImport({
             Import Observation Definitions from CSV
           </CardTitle>
           <CardDescription>
-            Upload a CSV file to create observation definitions and validate
-            them before import.
+            Upload CSV files to create observation definitions and validate them
+            before import. Select both files at once from the file picker.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -138,6 +229,7 @@ export default function ObservationDefinitionImport({
             <input
               type="file"
               accept=".csv"
+              multiple
               onChange={handleFileUpload}
               className="hidden"
               id="observation-definition-csv-upload"
@@ -155,17 +247,27 @@ export default function ObservationDefinitionImport({
                 <Upload className="h-12 w-12 text-gray-400" />
                 <div>
                   <p className="text-lg font-medium">
-                    Click to upload CSV file
+                    Click to upload CSV files
                   </p>
-                  <p className="text-sm text-gray-500">or drag and drop</p>
+                  <p className="text-sm text-gray-500">
+                    Select both definitions &amp; components CSVs at once
+                  </p>
                 </div>
                 <p className="text-xs text-gray-400">
-                  Required columns: title, description, category,
-                  permitted_data_type, code_system, code_value, code_display
+                  Definitions CSV (required) + Components CSV (optional)
                 </p>
-                <Button variant="outline" size="sm" onClick={downloadSample}>
-                  Download Sample CSV
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      downloadSampleCsvs();
+                    }}
+                  >
+                    Download Sample CSVs
+                  </Button>
+                </div>
               </div>
             </label>
           </div>

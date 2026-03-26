@@ -20,20 +20,22 @@ import {
 
 interface ObservationDefinitionCsvImportProps {
   facilityId?: string;
-  initialCsvText: string;
+  defsCsvText: string;
+  compCsvText: string;
   onBack: () => void;
 }
 
 export default function ObservationDefinitionCsvImport({
   facilityId,
-  initialCsvText,
+  defsCsvText,
+  compCsvText,
   onBack,
 }: ObservationDefinitionCsvImportProps) {
   const [currentStep, setCurrentStep] = useState<
     "review" | "importing" | "done"
   >("review");
   const [processedRows] = useState<ObservationProcessedRow[]>(() =>
-    parseObservationDefinitionCsv(initialCsvText),
+    parseObservationDefinitionCsv(defsCsvText, compCsvText),
   );
   const [results, setResults] = useState<ImportResults | null>(null);
   const [totalToImport, setTotalToImport] = useState(0);
