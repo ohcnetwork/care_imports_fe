@@ -26,6 +26,7 @@ import {
 } from "@/types/inventory/productKnowledge/productKnowledge";
 import { parseCsvText } from "@/utils/csv";
 import { upsertResourceCategories } from "@/utils/resourceCategory";
+import { createSlug } from "@/utils/slug";
 
 interface ProductImportProps {
   facilityId?: string;
@@ -99,6 +100,13 @@ const stripMappingWarnings = (warnings: string[]) =>
       !warning.startsWith("Charge item definition not found:"),
   );
 
+const stripMappingErrors = (errors: string[]) =>
+  errors.filter(
+    (error) =>
+      !error.startsWith("Product knowledge slug not found:") &&
+      !error.startsWith("Charge item definition slug not found:"),
+  );
+
 interface PaginatedResponse<T> {
   results: T[];
 }
@@ -161,28 +169,43 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
     if (!facilityId) return "";
     const pkNames = new Set<string>();
     const cidNames = new Set<string>();
+    const pkSlugs = new Set<string>();
+    const cidSlugs = new Set<string>();
 
     processedRows.forEach((row) => {
-      const pkName = row.data.product_knowledge_name?.trim() || row.data.name;
-      if (pkName) {
-        pkNames.add(pkName);
+      // Collect slug for direct validation if provided
+      if (row.data.product_knowledge_slug) {
+        pkSlugs.add(row.data.product_knowledge_slug);
+      } else {
+        // Otherwise collect name for name-based lookup
+        const pkName = row.data.product_knowledge_name?.trim() || row.data.name;
+        if (pkName) {
+          pkNames.add(pkName);
+        }
       }
 
-      const shouldCheckCid =
-        Boolean(row.data.charge_item_definition_name?.trim()) ||
-        Boolean(row.data.basePrice?.trim());
-      if (shouldCheckCid) {
-        const cidName =
-          row.data.charge_item_definition_name?.trim() || row.data.name;
-        if (cidName) {
-          cidNames.add(cidName);
+      if (row.data.charge_item_definition_slug) {
+        cidSlugs.add(row.data.charge_item_definition_slug);
+      } else {
+        const shouldCheckCid =
+          Boolean(row.data.charge_item_definition_name?.trim()) ||
+          Boolean(row.data.basePrice?.trim());
+        if (shouldCheckCid) {
+          const cidName =
+            row.data.charge_item_definition_name?.trim() || row.data.name;
+          if (cidName) {
+            cidNames.add(cidName);
+          }
         }
       }
     });
 
-    return `${Array.from(pkNames).sort().join("|")}::${Array.from(cidNames)
-      .sort()
-      .join("|")}`;
+    return [
+      Array.from(pkNames).sort().join("|"),
+      Array.from(cidNames).sort().join("|"),
+      Array.from(pkSlugs).sort().join("|"),
+      Array.from(cidSlugs).sort().join("|"),
+    ].join("::");
   }, [facilityId, processedRows]);
 
   const resolveMappings = useCallback(async () => {
@@ -199,24 +222,36 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
     const issues: string[] = [];
     const productKnowledgeMap: Record<string, string | null> = {};
     const chargeItemMap: Record<string, string | null> = {};
+    const validPkSlugs = new Set<string>();
+    const validCidSlugs = new Set<string>();
 
     const pkNames = new Set<string>();
     const cidNames = new Set<string>();
+    const pkSlugs = new Set<string>();
+    const cidSlugs = new Set<string>();
 
     processedRows.forEach((row) => {
-      const pkName = row.data.product_knowledge_name?.trim() || row.data.name;
-      if (pkName) {
-        pkNames.add(pkName);
+      if (row.data.product_knowledge_slug) {
+        pkSlugs.add(row.data.product_knowledge_slug);
+      } else {
+        const pkName = row.data.product_knowledge_name?.trim() || row.data.name;
+        if (pkName) {
+          pkNames.add(pkName);
+        }
       }
 
-      const shouldCheckCid =
-        Boolean(row.data.charge_item_definition_name?.trim()) ||
-        Boolean(row.data.basePrice?.trim());
-      if (shouldCheckCid) {
-        const cidName =
-          row.data.charge_item_definition_name?.trim() || row.data.name;
-        if (cidName) {
-          cidNames.add(cidName);
+      if (row.data.charge_item_definition_slug) {
+        cidSlugs.add(row.data.charge_item_definition_slug);
+      } else {
+        const shouldCheckCid =
+          Boolean(row.data.charge_item_definition_name?.trim()) ||
+          Boolean(row.data.basePrice?.trim());
+        if (shouldCheckCid) {
+          const cidName =
+            row.data.charge_item_definition_name?.trim() || row.data.name;
+          if (cidName) {
+            cidNames.add(cidName);
+          }
         }
       }
     });
@@ -276,6 +311,36 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
           }
         }),
       );
+
+      // Validate product knowledge slugs via direct GET
+      await Promise.all(
+        Array.from(pkSlugs).map(async (slug) => {
+          try {
+            await request(
+              `/api/v1/product_knowledge/f-${facilityId}-${slug}/`,
+              { method: "GET" },
+            );
+            validPkSlugs.add(slug);
+          } catch {
+            issues.push(`Product knowledge slug not found: ${slug}`);
+          }
+        }),
+      );
+
+      // Validate charge item definition slugs via direct GET
+      await Promise.all(
+        Array.from(cidSlugs).map(async (slug) => {
+          try {
+            await request(
+              `/api/v1/facility/${facilityId}/charge_item_definition/f-${facilityId}-${slug}/`,
+              { method: "GET" },
+            );
+            validCidSlugs.add(slug);
+          } catch {
+            issues.push(`Charge item definition slug not found: ${slug}`);
+          }
+        }),
+      );
     } catch {
       issues.push("Failed to resolve reference data.");
     }
@@ -286,8 +351,42 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
 
     setProcessedRows((prevRows) =>
       prevRows.map((row) => {
+        const updatedWarnings = stripMappingWarnings(row.warnings);
+        const updatedErrors = stripMappingErrors(row.errors);
+
+        // Product knowledge resolution
+        const hasDirectPkSlug = Boolean(row.data.product_knowledge_slug);
         const productKnowledgeName =
           row.data.product_knowledge_name?.trim() || row.data.name;
+
+        let pkSlug: string | null | undefined;
+        let pkExists: boolean;
+
+        if (hasDirectPkSlug) {
+          const slug = row.data.product_knowledge_slug!;
+          if (validPkSlugs.has(slug)) {
+            pkSlug = `f-${facilityId}-${slug}`;
+            pkExists = true;
+          } else {
+            pkSlug = null;
+            pkExists = false;
+            updatedErrors.push(`Product knowledge slug not found: ${slug}`);
+          }
+        } else {
+          pkSlug = productKnowledgeName
+            ? productKnowledgeMap[normalizeName(productKnowledgeName)]
+            : null;
+          pkExists = Boolean(pkSlug);
+        }
+
+        if (!hasDirectPkSlug && !pkExists) {
+          updatedWarnings.push(
+            `Product knowledge not found: ${productKnowledgeName}. It will be created during import.`,
+          );
+        }
+
+        // Charge item definition resolution
+        const hasDirectCidSlug = Boolean(row.data.charge_item_definition_slug);
         const shouldCheckCid =
           Boolean(row.data.charge_item_definition_name?.trim()) ||
           Boolean(row.data.basePrice?.trim());
@@ -295,23 +394,30 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
           ? row.data.charge_item_definition_name?.trim() || row.data.name
           : undefined;
 
-        const updatedWarnings = stripMappingWarnings(row.warnings);
-        const pkSlug = productKnowledgeName
-          ? productKnowledgeMap[normalizeName(productKnowledgeName)]
-          : null;
-        const cidSlug = chargeItemName
-          ? chargeItemMap[normalizeName(chargeItemName)]
-          : null;
-        const pkExists = Boolean(pkSlug);
-        const cidExists = chargeItemName ? Boolean(cidSlug) : true;
+        let cidSlug: string | null | undefined;
+        let cidExists: boolean;
 
-        if (!pkExists) {
-          updatedWarnings.push(
-            `Product knowledge not found: ${productKnowledgeName}. It will be created during import.`,
-          );
+        if (hasDirectCidSlug) {
+          const slug = row.data.charge_item_definition_slug!;
+          if (validCidSlugs.has(slug)) {
+            cidSlug = `f-${facilityId}-${slug}`;
+            cidExists = true;
+          } else {
+            cidSlug = null;
+            cidExists = false;
+            updatedErrors.push(
+              `Charge item definition slug not found: ${slug}`,
+            );
+          }
+        } else if (chargeItemName) {
+          cidSlug = chargeItemMap[normalizeName(chargeItemName)];
+          cidExists = Boolean(cidSlug);
+        } else {
+          cidSlug = null;
+          cidExists = true;
         }
 
-        if (chargeItemName && !cidExists) {
+        if (!hasDirectCidSlug && chargeItemName && !cidExists) {
           if (!row.data.basePrice?.trim()) {
             updatedWarnings.push(
               `Charge item definition not found: ${chargeItemName}. It will be skipped because basePrice is missing.`,
@@ -325,6 +431,7 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
 
         return {
           ...row,
+          errors: updatedErrors,
           warnings: updatedWarnings,
           resolved: {
             productKnowledgeName,
@@ -407,16 +514,68 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
             10,
           );
 
+          const dosageForm = getCellValue(row, headerMap, "dosageForm").trim();
+          const lot_number = getCellValue(row, headerMap, "lot_number").trim();
+          const expiration_date = getCellValue(
+            row,
+            headerMap,
+            "expiration_date",
+          ).trim();
+          const product_knowledge_name = getCellValue(
+            row,
+            headerMap,
+            "product_knowledge_name",
+          ).trim();
+          const charge_item_definition_name = getCellValue(
+            row,
+            headerMap,
+            "charge_item_definition_name",
+          ).trim();
+          const product_knowledge_slug =
+            getCellValue(row, headerMap, "product_knowledge_slug").trim() ||
+            undefined;
+          const charge_item_definition_slug =
+            getCellValue(
+              row,
+              headerMap,
+              "charge_item_definition_slug",
+            ).trim() || undefined;
+
           if (!name) errors.push("Missing name");
           if (!type) errors.push("Missing type");
           if (type && !ITEM_TYPES.includes(type as ItemType)) {
             errors.push("Invalid type (must be medication or consumable)");
           }
 
-          if (!basePrice) {
-            warnings.push(
-              "Base price is missing. Charge item will not be created unless a charge_item_definition_slug is provided.",
+          // Product knowledge: either name or slug must be present
+          if (!product_knowledge_name && !product_knowledge_slug) {
+            errors.push(
+              "Either product_knowledge_name or product_knowledge_slug is required",
             );
+          }
+
+          // Charge item definition: if name is provided without slug, basePrice is required
+          if (
+            charge_item_definition_name &&
+            !charge_item_definition_slug &&
+            !basePrice
+          ) {
+            errors.push(
+              "basePrice is required when charge_item_definition_name is provided without a slug",
+            );
+          }
+
+          // If neither cid name nor slug is provided, warn that no charge item will be created
+          if (!charge_item_definition_name && !charge_item_definition_slug) {
+            if (!basePrice) {
+              warnings.push(
+                "No charge item definition name or slug provided. Charge item will not be created.",
+              );
+            } else {
+              warnings.push(
+                "basePrice provided but no charge_item_definition_name or charge_item_definition_slug. A new charge item definition will be created using the product name.",
+              );
+            }
           }
 
           const data: ProductRow = {
@@ -426,32 +585,13 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
             inventoryQuantity: Number.isNaN(inventoryQuantity)
               ? 0
               : inventoryQuantity,
-            dosageForm: getCellValue(row, headerMap, "dosageForm").trim(),
-            lot_number: getCellValue(row, headerMap, "lot_number").trim(),
-            expiration_date: getCellValue(
-              row,
-              headerMap,
-              "expiration_date",
-            ).trim(),
-            product_knowledge_name: getCellValue(
-              row,
-              headerMap,
-              "product_knowledge_name",
-            ).trim(),
-            charge_item_definition_name: getCellValue(
-              row,
-              headerMap,
-              "charge_item_definition_name",
-            ).trim(),
-            product_knowledge_slug:
-              getCellValue(row, headerMap, "product_knowledge_slug").trim() ||
-              undefined,
-            charge_item_definition_slug:
-              getCellValue(
-                row,
-                headerMap,
-                "charge_item_definition_slug",
-              ).trim() || undefined,
+            dosageForm,
+            lot_number,
+            expiration_date,
+            product_knowledge_name,
+            charge_item_definition_name,
+            product_knowledge_slug,
+            charge_item_definition_slug,
           };
 
           return {
@@ -493,6 +633,7 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
     ];
 
     const rows = [
+      // Example 1: Using names — PK and CID will be created with auto-generated slugs
       [
         "Paracetamol 500mg",
         "medication",
@@ -503,9 +644,10 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
         "2027-12-31",
         "Paracetamol",
         "Paracetamol Charge",
-        "paracetamol-pk",
-        "paracetamol-cid",
+        "",
+        "",
       ].map(csvEscape),
+      // Example 2: Using existing slugs — PK and CID must already exist
       [
         "Surgical Gloves",
         "consumable",
@@ -514,10 +656,10 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
         "",
         "",
         "",
-        "Surgical Gloves",
+        "",
         "",
         "surgical-gloves-pk",
-        "",
+        "surgical-gloves-cid",
       ].map(csvEscape),
     ];
 
@@ -596,13 +738,12 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
         let resolvedProductKnowledgeSlug = row.resolved?.productKnowledgeSlug;
         let resolvedChargeItemSlug = row.resolved?.chargeItemSlug;
 
+        // If slug was provided and validated, use it directly (skip PK creation)
+        // If name was provided (no slug), create the PK with an auto-generated slug
         if (!row.resolved?.productKnowledgeExists) {
-          if (!row.data.product_knowledge_slug) {
-            throw new Error(
-              "Missing product_knowledge_slug for new product knowledge creation",
-            );
-          }
-          const slugValue = row.data.product_knowledge_slug;
+          const pkName =
+            row.data.product_knowledge_name?.trim() || row.data.name;
+          const slugValue = await createSlug(pkName);
           const categoryName =
             row.data.type === "medication" ? "Medicines" : "Consumables";
           const categorySlug = pkCategoryMap.get(normalizeName(categoryName));
@@ -610,7 +751,7 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
           const payload: ProductKnowledgeCreate = {
             facility: facilityId,
             slug_value: slugValue,
-            name: row.data.name,
+            name: pkName,
             status: ProductKnowledgeStatus.active,
             names: [],
             storage_guidelines: [],
@@ -650,26 +791,25 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
           resolvedProductKnowledgeSlug = pkResponse.slug;
         }
 
+        // If slug was provided and validated, use it directly (skip CID creation)
+        // If name was provided (no slug) with a price, create the CID with an auto-generated slug
         const shouldCreateCid =
           Boolean(row.data.basePrice?.trim()) &&
           !row.resolved?.chargeItemExists;
 
         if (shouldCreateCid) {
-          if (!row.data.charge_item_definition_slug) {
-            throw new Error(
-              "Missing charge_item_definition_slug for new charge item creation",
-            );
-          }
-          const slugValue = row.data.charge_item_definition_slug;
+          const cidName =
+            row.data.charge_item_definition_name?.trim() || row.data.name;
+          const slugValue = await createSlug(cidName);
           const categoryName =
             row.data.type === "medication" ? "Medications" : "Consumables";
           const categorySlug = cidCategoryMap.get(normalizeName(categoryName));
           const payload: ChargeItemDefinitionCreate = {
-            title: row.data.name,
+            title: cidName,
             slug_value: slugValue,
             status: ChargeItemDefinitionStatus.active,
             can_edit_charge_item: true,
-            discount_configuration: [],
+            discount_configuration: null,
             category: categorySlug ?? "",
             price_components: [
               {
@@ -763,9 +903,10 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
                     <p className="text-sm text-gray-500">or drag and drop</p>
                   </div>
                   <p className="text-xs text-gray-400">
-                    Required columns: name, type. Optional columns: basePrice,
-                    inventoryQuantity, dosageForm, lot_number, expiration_date,
-                    product_knowledge_name, charge_item_definition_name
+                    Required columns: name, type. Provide product_knowledge_name
+                    / charge_item_definition_name to create new entities, or
+                    product_knowledge_slug / charge_item_definition_slug to
+                    reference existing ones.
                   </p>
                   <Button variant="outline" size="sm" onClick={downloadSample}>
                     Download Sample CSV
