@@ -361,9 +361,15 @@ export default function ActivityDefinitionCsvImport({
           diagnostic_report_codes: row.data.diagnostic_report_codes,
           derived_from_uri: row.data.derived_from_uri || undefined,
           facility: facilityId,
-          specimen_requirements: row.resolved?.specimenSlugs ?? [],
-          observation_result_requirements: row.resolved?.observationSlugs ?? [],
-          charge_item_definitions: row.resolved?.chargeItemSlugs ?? [],
+          specimen_requirements: (row.resolved?.specimenSlugs ?? []).map(
+            (s) => `f-${facilityId}-${s}`,
+          ),
+          observation_result_requirements: (
+            row.resolved?.observationSlugs ?? []
+          ).map((s) => `f-${facilityId}-${s}`),
+          charge_item_definitions: (row.resolved?.chargeItemSlugs ?? []).map(
+            (s) => `f-${facilityId}-${s}`,
+          ),
           locations: row.resolved?.locationIds ?? [],
           category: categorySlug,
           healthcare_service: row.resolved?.healthcareServiceId ?? null,
