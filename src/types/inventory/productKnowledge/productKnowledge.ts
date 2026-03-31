@@ -40,3 +40,48 @@ export interface ProductKnowledgeCreate {
   };
   alternate_identifier?: string;
 }
+
+/* ------------------------------------------------------------------ */
+/*  CSV Import Types                                                   */
+/* ------------------------------------------------------------------ */
+
+export type ProductKnowledgeCsvHeaderKey =
+  | "resourceCategory"
+  | "slug"
+  | "name"
+  | "productType"
+  | "codeDisplay"
+  | "codeValue"
+  | "baseUnitDisplay"
+  | "dosageFormDisplay"
+  | "dosageFormCode"
+  | "routeCode"
+  | "routeDisplay"
+  | "alternateIdentifier"
+  | "alternateNameType"
+  | "alternateNameValue";
+
+export type ProductKnowledgeCsvRow = Record<
+  ProductKnowledgeCsvHeaderKey,
+  string
+>;
+
+export type ProductKnowledgeValidated = Omit<
+  ProductKnowledgeCsvRow,
+  "productType" | "alternateNameType"
+> & {
+  baseUnit: { system: string; code: string; display: string };
+  slugPromise: Promise<string>;
+  productType: ProductKnowledgeType;
+  alternateNameType?: ProductNameTypes;
+  dosageForm?: { system: string; code: string; display: string };
+  intendedRoutes: { system: string; code: string; display: string }[];
+  code?: { system: string; code: string; display: string };
+};
+
+export type ProductKnowledgeProcessedRow = {
+  rowIndex: number;
+  raw: ProductKnowledgeCsvRow;
+  errors: string[];
+  normalized: ProductKnowledgeValidated | null;
+};

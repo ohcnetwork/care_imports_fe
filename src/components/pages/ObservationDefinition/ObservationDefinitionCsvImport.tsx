@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
 import ObservationDefinitionReviewTable from "@/components/shared/ObservationDefinitionReviewTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import type { ObservationProcessedRow } from "@/types/emr/observationDefinition/observationDefinition";
 import { type ImportResults } from "@/utils/importHelpers";
-import {
-  parseObservationDefinitionCsv,
-  type ObservationProcessedRow,
-} from "@/utils/masterImport/observationDefinition";
+import { parseObservationDefinitionCsv } from "@/utils/masterImport/observationDefinition";
 
 interface ObservationDefinitionCsvImportProps {
   facilityId?: string;
@@ -99,10 +97,8 @@ export default function ObservationDefinitionCsvImport({
           qualified_ranges: row.data.qualified_ranges ?? [],
         };
 
-        const upsertPath = "/api/v1/observation_definition/upsert/";
-        await request(upsertPath, {
-          method: "POST",
-          body: JSON.stringify({ datapoints: [payload] }),
+        await apis.observationDefinition.upsert({
+          datapoints: [payload as unknown as Record<string, unknown>],
         });
 
         setResults((prev) =>

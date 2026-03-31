@@ -1,11 +1,20 @@
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
 import {
   ProductKnowledgeBase,
   ProductKnowledgeType,
   ProductNameTypes,
+  type ProductKnowledgeCsvRow,
+  type ProductKnowledgeProcessedRow,
+  type ProductKnowledgeValidated,
 } from "@/types/inventory/productKnowledge/productKnowledge";
 import { parseCsvText } from "@/utils/csv";
 import { isUrlSafeSlug } from "@/utils/slug";
+
+export type {
+  ProductKnowledgeCsvRow,
+  ProductKnowledgeProcessedRow,
+  ProductKnowledgeValidated,
+} from "@/types/inventory/productKnowledge/productKnowledge";
 
 const HEADER_MAP = {
   resourceCategory: 0,
@@ -69,19 +78,6 @@ const parseCsvList = (value?: string) =>
 
 export const normalizeProductKnowledgeName = (value: string) =>
   value.trim().toLowerCase();
-
-export type ProductKnowledgeCsvRow = Record<keyof typeof HEADER_MAP, string>;
-
-export type ProductKnowledgeValidated = ReturnType<
-  typeof validateProductKnowledgeDatapoint
->;
-
-export type ProductKnowledgeProcessedRow = {
-  rowIndex: number;
-  raw: ProductKnowledgeCsvRow;
-  errors: string[];
-  normalized: ProductKnowledgeValidated | null;
-};
 
 export const parseProductKnowledgeCsv = (
   csvText: string,
@@ -256,10 +252,11 @@ export async function getExistingProductKnowledgeSlugs(facilityId: string) {
   let page = 0;
 
   while (hasNextPage) {
-    const response = (await request(
-      `/api/v1/product_knowledge/?facility=${facilityId}&limit=100&offset=${page * 100}`,
-      { method: "GET" },
-    )) as { results: ProductKnowledgeBase[] };
+    const response = (await apis.productKnowledge.list({
+      facility: facilityId,
+      limit: 100,
+      offset: page * 100,
+    })) as unknown as { results: ProductKnowledgeBase[] };
 
     results.push(...response.results);
 

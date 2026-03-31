@@ -1,7 +1,7 @@
 import { AlertCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,13 +16,13 @@ import { ResourceCategoryResourceType } from "@/types/base/resourceCategory/reso
 import {
   ProductKnowledgeCreate,
   ProductKnowledgeStatus,
+  type ProductKnowledgeProcessedRow,
 } from "@/types/inventory/productKnowledge/productKnowledge";
 import { type ImportResults } from "@/utils/importHelpers";
 import {
   normalizeProductKnowledgeName,
   parseProductKnowledgeCsv,
   resolveProductKnowledgeDatapoint,
-  type ProductKnowledgeProcessedRow,
 } from "@/utils/masterImport/productKnowledge";
 import { upsertResourceCategories } from "@/utils/resourceCategory";
 
@@ -143,10 +143,9 @@ export default function ProductKnowledgeCsvImport({
       }
 
       try {
-        await request("/api/v1/product_knowledge/", {
-          method: "POST",
-          body: JSON.stringify(productKnowledge),
-        });
+        await apis.productKnowledge.create(
+          productKnowledge as unknown as Record<string, unknown>,
+        );
         setResults((prev) =>
           prev
             ? {

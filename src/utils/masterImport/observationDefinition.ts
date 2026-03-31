@@ -1,37 +1,18 @@
+import type { Code } from "@/types/base/code/code";
+import type {
+  JsonObject,
+  ObservationComponentPayload,
+  ObservationProcessedRow,
+  ObservationRow,
+} from "@/types/emr/observationDefinition/observationDefinition";
 import { parseCsvText } from "@/utils/csv";
 import { isUrlSafeSlug } from "@/utils/slug";
 
-export type CodePayload = {
-  system: string;
-  code: string;
-  display: string;
-};
-
-type JsonObject = Record<string, unknown>;
-
-export type ObservationComponentPayload = JsonObject;
-
-export type ObservationRow = {
-  title: string;
-  slug_value: string;
-  description: string;
-  category: string;
-  status: string;
-  code: CodePayload;
-  permitted_data_type: string;
-  component: ObservationComponentPayload[];
-  body_site: CodePayload | null;
-  method: CodePayload | null;
-  permitted_unit: CodePayload | null;
-  qualified_ranges: JsonObject[];
-  derived_from_uri?: string;
-};
-
-export type ObservationProcessedRow = {
-  rowIndex: number;
-  data: ObservationRow;
-  errors: string[];
-};
+export type {
+  ObservationComponentPayload,
+  ObservationProcessedRow,
+  ObservationRow,
+} from "@/types/emr/observationDefinition/observationDefinition";
 
 const REQUIRED_HEADERS = [
   "title",
@@ -377,7 +358,7 @@ export const parseComponentCsv = (
       }
 
       // Build permitted_unit
-      let permittedUnit: CodePayload | null = null;
+      let permittedUnit: Code | null = null;
       if (comp.unitCode && comp.unitDisplay) {
         permittedUnit = {
           system: comp.unitSystem,

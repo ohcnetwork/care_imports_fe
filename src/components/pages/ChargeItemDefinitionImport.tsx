@@ -1,7 +1,7 @@
 import { AlertCircle, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -212,10 +212,14 @@ Bed Charges,bed-charges,Per day bed charge,Bed usage,1500`;
 
     if (!facilityId) return;
 
-    const existingCategories = (await request(
-      `/api/v1/facility/${facilityId}/resource_category/?limit=100&resource_type=${ResourceCategoryResourceType.charge_item_definition}&resource_sub_type=${ResourceCategorySubType.other}`,
-      { method: "GET" },
-    )) as { results: ResourceCategoryRead[] };
+    const existingCategories = (await apis.facility.resourceCategory.list(
+      facilityId,
+      {
+        limit: 100,
+        resource_type: ResourceCategoryResourceType.charge_item_definition,
+        resource_sub_type: ResourceCategorySubType.other,
+      },
+    )) as unknown as { results: ResourceCategoryRead[] };
 
     const normalizedTitle = categoryTitle.trim().toLowerCase();
     const existingCategory = existingCategories.results.find(
@@ -226,14 +230,11 @@ Bed Charges,bed-charges,Per day bed charge,Bed usage,1500`;
 
     if (!categorySlug) {
       categorySlug = await createSlug(categoryTitle);
-      await request(`/api/v1/facility/${facilityId}/resource_category/`, {
-        method: "POST",
-        body: JSON.stringify({
-          title: categoryTitle,
-          slug_value: categorySlug,
-          resource_type: ResourceCategoryResourceType.charge_item_definition,
-          resource_sub_type: ResourceCategorySubType.other,
-        }),
+      await apis.facility.resourceCategory.create(facilityId, {
+        title: categoryTitle,
+        slug_value: categorySlug,
+        resource_type: ResourceCategoryResourceType.charge_item_definition,
+        resource_sub_type: ResourceCategorySubType.other,
       });
     }
 
@@ -260,14 +261,15 @@ Bed Charges,bed-charges,Per day bed charge,Bed usage,1500`;
           ],
         };
 
-        const url = `/api/v1/facility/${facilityId}/charge_item_definition/f-${facilityId}-${slug}/`;
+        const cidSlug = `f-${facilityId}-${slug}`;
 
         try {
-          await request(url, { method: "GET" });
-          await request(url, {
-            method: "PUT",
-            body: JSON.stringify(payload),
-          });
+          await apis.facility.chargeItemDefinition.get(facilityId, cidSlug);
+          await apis.facility.chargeItemDefinition.update(
+            facilityId,
+            cidSlug,
+            payload as unknown as Record<string, unknown>,
+          );
           setResults((prev) =>
             prev
               ? {
@@ -284,12 +286,9 @@ Bed Charges,bed-charges,Per day bed charge,Bed usage,1500`;
               throw error;
             }
           }
-          await request(
-            `/api/v1/facility/${facilityId}/charge_item_definition/`,
-            {
-              method: "POST",
-              body: JSON.stringify(payload),
-            },
+          await apis.facility.chargeItemDefinition.create(
+            facilityId,
+            payload as unknown as Record<string, unknown>,
           );
           setResults((prev) =>
             prev

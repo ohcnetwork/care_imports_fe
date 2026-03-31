@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import {
   Select,
@@ -31,10 +31,6 @@ interface ImportsLayoutProps {
 interface FacilityOption {
   id: string;
   name: string;
-}
-
-interface CurrentUserResponse {
-  facilities?: FacilityOption[];
 }
 
 const getTabConfig = () => [
@@ -109,12 +105,7 @@ export default function ImportsLayout({
 
     const loadFacilities = async () => {
       try {
-        const response = await request<CurrentUserResponse>(
-          "/api/v1/users/getcurrentuser/",
-          {
-            method: "GET",
-          },
-        );
+        const response = await apis.user.getCurrentUser();
         if (!active) return;
         setFacilities(response.facilities ?? []);
         setFacilityError(null);

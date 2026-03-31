@@ -2,7 +2,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Download, Loader2 } from "lucide-react";
 import { useEffect, useMemo } from "react";
 
-import { request } from "@/apis/request";
+import { request } from "@/apis";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {

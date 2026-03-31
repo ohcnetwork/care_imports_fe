@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,12 +17,10 @@ import {
   ImportResults,
   Preference,
   SpecimenDefinitionCreate,
+  type SpecimenProcessedRow,
   TypeTestedSpec,
 } from "@/types/emr/specimenDefinition/specimenDefinition";
-import {
-  parseSpecimenDefinitionCsv,
-  type SpecimenProcessedRow,
-} from "@/utils/masterImport/specimenDefinition";
+import { parseSpecimenDefinitionCsv } from "@/utils/masterImport/specimenDefinition";
 
 const CODE_ERROR_PREFIX = "Invalid code:";
 
@@ -94,12 +92,9 @@ export default function SpecimenDefinitionCsvImport({
     await Promise.all(
       uniqueCodeReferences.map(async (ref) => {
         try {
-          await request("/api/v1/valueset/lookup_code/", {
-            method: "POST",
-            body: JSON.stringify({
-              system: ref.code.system,
-              code: ref.code.code,
-            }),
+          await apis.valueset.lookupCode({
+            system: ref.code.system,
+            code: ref.code.code,
           });
         } catch {
           invalidSignatures.add(ref.signature);
@@ -234,10 +229,8 @@ export default function SpecimenDefinitionCsvImport({
           type_tested: typeTested,
         };
 
-        const upsertPath = `/api/v1/facility/${facilityId}/specimen_definition/upsert/`;
-        await request(upsertPath, {
-          method: "POST",
-          body: JSON.stringify({ datapoints: [payload] }),
+        await apis.facility.specimenDefinition.upsert(facilityId, {
+          datapoints: [payload as unknown as Record<string, unknown>],
         });
 
         setResults((prev) =>

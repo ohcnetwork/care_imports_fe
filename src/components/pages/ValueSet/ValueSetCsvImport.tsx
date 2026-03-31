@@ -1,7 +1,7 @@
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
-import { APIError, request } from "@/apis/request";
+import { APIError, apis } from "@/apis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -121,11 +121,10 @@ export default function ValueSetCsvImport({
     for (const group of validGroups) {
       try {
         const payload = buildValueSetPayload(group);
-        const detailUrl = `/api/v1/valueset/${group.slug}/`;
 
         let exists = false;
         try {
-          await request(detailUrl, { method: "GET" });
+          await apis.valueset.get(group.slug);
           exists = true;
         } catch (error) {
           if (error instanceof APIError && error.status === 404) {
@@ -136,10 +135,10 @@ export default function ValueSetCsvImport({
         }
 
         if (exists) {
-          await request(detailUrl, {
-            method: "PUT",
-            body: JSON.stringify(payload),
-          });
+          await apis.valueset.update(
+            group.slug,
+            payload as unknown as Record<string, unknown>,
+          );
           setImportResults((prev) =>
             prev
               ? {
@@ -150,10 +149,9 @@ export default function ValueSetCsvImport({
               : prev,
           );
         } else {
-          await request("/api/v1/valueset/", {
-            method: "POST",
-            body: JSON.stringify(payload),
-          });
+          await apis.valueset.create(
+            payload as unknown as Record<string, unknown>,
+          );
           setImportResults((prev) =>
             prev
               ? {

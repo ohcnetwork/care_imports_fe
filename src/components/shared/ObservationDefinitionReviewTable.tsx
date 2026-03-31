@@ -8,14 +8,14 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
+import type {
+  ObservationComponentPayload,
+  ObservationProcessedRow,
+} from "@/types/emr/observationDefinition/observationDefinition";
 import {
   formatComponentRanges,
   getComponentUnit,
 } from "@/utils/formatComponentRanges";
-import type {
-  ObservationComponentPayload,
-  ObservationProcessedRow,
-} from "@/utils/masterImport/observationDefinition";
 
 type JsonObject = Record<string, unknown>;
 

@@ -1,5 +1,5 @@
+import type { ActivityDefinitionProcessedRow } from "@/types/emr/activityDefinition/activityDefinition";
 import { csvEscape } from "@/utils/importHelpers";
-import type { ActivityDefinitionProcessedRow } from "@/utils/masterImport/activityDefinition";
 
 export interface ResolvedRow {
   categorySlug?: string;

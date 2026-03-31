@@ -6,9 +6,12 @@ import {
   QuantitySpec,
   SpecimenDefinitionStatus,
   SpecimenRow,
+  type SpecimenProcessedRow,
 } from "@/types/emr/specimenDefinition/specimenDefinition";
 import { parseCsvText } from "@/utils/csv";
 import { isUrlSafeSlug } from "@/utils/slug";
+
+export type { SpecimenProcessedRow } from "@/types/emr/specimenDefinition/specimenDefinition";
 
 const REQUIRED_HEADERS = [
   "title",
@@ -86,13 +89,6 @@ const buildOptionalQuantity = (
     value,
     unit: { system: unitSystem, code: unitCode, display: unitDisplay },
   };
-};
-
-export type SpecimenProcessedRow = {
-  rowIndex: number;
-  data: SpecimenRow;
-  errors: string[];
-  codeReferences: CodeReference[];
 };
 
 export const parseSpecimenDefinitionCsv = (

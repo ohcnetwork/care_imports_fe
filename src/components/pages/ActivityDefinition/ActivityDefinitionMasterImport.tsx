@@ -1,4 +1,4 @@
-import { queryString, request } from "@/apis/request";
+import { apis } from "@/apis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,6 @@ import {
   fetchExistingId,
   normalizeName,
   type ImportResults,
-  type PaginatedResponse,
 } from "@/utils/importHelpers";
 import { parseActivityDefinitionCsv } from "@/utils/masterImport/activityDefinition";
 import { upsertResourceCategories } from "@/utils/resourceCategory";
@@ -135,9 +134,9 @@ export default function ActivityDefinitionMasterImport({
     await Promise.all(
       Array.from(uniqueSpecimenSlugs).map(async (slug) => {
         try {
-          await request(
-            `/api/v1/facility/${facilityId}/specimen_definition/f-${facilityId}-${slug}/`,
-            { method: "GET" },
+          await apis.facility.specimenDefinition.get(
+            facilityId,
+            `f-${facilityId}-${slug}`,
           );
           validSpecimenSlugs.add(slug);
         } catch {
@@ -149,10 +148,7 @@ export default function ActivityDefinitionMasterImport({
     await Promise.all(
       Array.from(uniqueObservationSlugs).map(async (slug) => {
         try {
-          await request(
-            `/api/v1/observation_definition/f-${facilityId}-${slug}/`,
-            { method: "GET" },
-          );
+          await apis.observationDefinition.get(`f-${facilityId}-${slug}`);
           validObservationSlugs.add(slug);
         } catch {
           issues.push(`Observation slug not found: ${slug}`);
@@ -162,14 +158,9 @@ export default function ActivityDefinitionMasterImport({
 
     await Promise.all(
       Array.from(uniqueActivityTitles).map(async (title) => {
-        const response = await request<
-          PaginatedResponse<{ title: string; slug: string }>
-        >(
-          `/api/v1/facility/${facilityId}/charge_item_definition/${queryString({
-            title,
-            limit: 10,
-          })}`,
-          { method: "GET" },
+        const response = await apis.facility.chargeItemDefinition.list(
+          facilityId,
+          { title, limit: 10 },
         );
         const match = response.results.find(
           (item) => normalizeName(item.title) === normalizeName(title),
@@ -186,15 +177,10 @@ export default function ActivityDefinitionMasterImport({
 
     await Promise.all(
       Array.from(uniqueLocations).map(async (name) => {
-        const response = await request<
-          PaginatedResponse<{ name: string; id: string }>
-        >(
-          `/api/v1/facility/${facilityId}/location/${queryString({
-            name,
-            limit: 50,
-          })}`,
-          { method: "GET" },
-        );
+        const response = await apis.facility.location.list(facilityId, {
+          name,
+          limit: 50,
+        });
         const match = response.results.find(
           (item) => normalizeName(item.name) === normalizeName(name),
         );
@@ -354,13 +340,13 @@ export default function ActivityDefinitionMasterImport({
 
     const loadHealthcareServices = async () => {
       try {
-        const response = await request<{ results: HealthcareServiceOption[] }>(
-          `/api/v1/facility/${facilityId}/healthcare_service/${queryString({
-            limit: 200,
-          })}`,
-          { method: "GET" },
+        const response = await apis.facility.healthcareService.list(
+          facilityId,
+          { limit: 200 },
         );
-        setHealthcareServices(response.results || []);
+        setHealthcareServices(
+          (response.results as HealthcareServiceOption[]) || [],
+        );
       } catch {
         setHealthcareServices([]);
       }
@@ -462,14 +448,12 @@ export default function ActivityDefinitionMasterImport({
         };
 
         const detailPath = `/api/v1/facility/${facilityId}/activity_definition/${detailSlug}/`;
-        const upsertPath = `/api/v1/facility/${facilityId}/activity_definition/upsert/`;
         const existingId = await fetchExistingId(detailPath);
         const datapoint = existingId
           ? { ...payload, id: `f-${facilityId}-${slug}` }
           : payload;
-        await request(upsertPath, {
-          method: "POST",
-          body: JSON.stringify({ datapoints: [datapoint] }),
+        await apis.facility.activityDefinition.upsert(facilityId, {
+          datapoints: [datapoint as unknown as Record<string, unknown>],
         });
         if (existingId) {
           setResults((prev) =>

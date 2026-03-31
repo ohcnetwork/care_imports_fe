@@ -1,7 +1,7 @@
 import { AlertCircle, ChevronDown, ChevronRight, Upload } from "lucide-react";
 import { useCallback, useState } from "react";
 
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,6 @@ import {
   LocationTypeIcons,
   LocationWrite,
 } from "@/types/location/location";
-import { locationApi } from "@/types/location/locationApi";
 import { parseCsvText } from "@/utils/csv";
 
 interface LocationImportProps {
@@ -663,9 +662,6 @@ async function saveLocationTree(
 ): Promise<void> {
   for (const node of nodes) {
     try {
-      const { path } = locationApi.create;
-      const url = path.replace("{facility_id}", facilityId);
-
       const shouldApplyOrganizations = shouldApplyOrganizationsForForm(
         node.form,
       );
@@ -692,21 +688,17 @@ async function saveLocationTree(
         mode: node.mode,
       };
 
-      const created = await request<LocationDetail>(url, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
+      const created = (await apis.facility.location.create(
+        facilityId,
+        payload as unknown as Record<string, unknown>,
+      )) as LocationDetail;
 
       if (shouldApplyOrganizations && organizationIds.length > 0) {
         await Promise.all(
           organizationIds.map((organization) =>
-            request(
-              `/api/v1/facility/${facilityId}/location/${created.id}/organizations_add/`,
-              {
-                method: "POST",
-                body: JSON.stringify({ organization }),
-              },
-            ),
+            apis.facility.location.addOrganizations(facilityId, created.id, {
+              organization,
+            }),
           ),
         );
       }
@@ -736,10 +728,9 @@ async function saveLocationTree(
 }
 
 const resolveDepartmentMap = async (facilityId: string) => {
-  const response = await request<{ results: { id: string; name: string }[] }>(
-    `/api/v1/facility/${facilityId}/organizations/?limit=500`,
-    { method: "GET" },
-  );
+  const response = await apis.facility.organizations.list(facilityId, {
+    limit: 500,
+  });
   const map = new Map<string, string>();
   response.results.forEach((org) => {
     const key = org.name.trim().toLowerCase();

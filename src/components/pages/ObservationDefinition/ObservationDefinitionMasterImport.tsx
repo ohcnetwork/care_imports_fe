@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { queryString, request } from "@/apis/request";
+import { apis, queryString } from "@/apis";
 import ObservationDefinitionReviewTable from "@/components/shared/ObservationDefinitionReviewTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,11 +12,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import type { ObservationProcessedRow } from "@/types/emr/observationDefinition/observationDefinition";
 import { fetchExistingId, type ImportResults } from "@/utils/importHelpers";
-import {
-  parseObservationDefinitionCsv,
-  type ObservationProcessedRow,
-} from "@/utils/masterImport/observationDefinition";
+import { parseObservationDefinitionCsv } from "@/utils/masterImport/observationDefinition";
 
 interface ObservationDefinitionMasterImportProps {
   facilityId?: string;
@@ -124,14 +122,12 @@ export default function ObservationDefinitionMasterImport({
         };
 
         const detailPath = `/api/v1/observation_definition/f-${facilityId}-${slug}/${queryString({ facility: facilityId })}`;
-        const upsertPath = "/api/v1/observation_definition/upsert/";
         const existingId = await fetchExistingId(detailPath);
         const datapoint = existingId
           ? { ...payload, id: `f-${facilityId}-${slug}` }
           : payload;
-        await request(upsertPath, {
-          method: "POST",
-          body: JSON.stringify({ datapoints: [datapoint] }),
+        await apis.observationDefinition.upsert({
+          datapoints: [datapoint as unknown as Record<string, unknown>],
         });
         if (existingId) {
           setResults((prev) =>

@@ -2,7 +2,8 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Download, Loader2 } from "lucide-react";
 import { useEffect, useMemo } from "react";
 
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
+import type { PaginatedResponse } from "@/apis/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +15,6 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import type { ValueSetRead } from "@/types/valueset/valueset";
-import type { PaginatedResponse } from "@/utils/export";
 import { downloadCsv, toCsvString } from "@/utils/export";
 import {
   flattenValueSetToRows,
@@ -30,9 +30,6 @@ interface ValueSetExportProps {
 export default function ValueSetExport({ facilityId }: ValueSetExportProps) {
   void facilityId;
 
-  const separator = "?";
-  const apiPath = "/api/v1/valueset/";
-
   const {
     data,
     fetchNextPage,
@@ -44,10 +41,10 @@ export default function ValueSetExport({ facilityId }: ValueSetExportProps) {
   } = useInfiniteQuery({
     queryKey: ["export", "valueset"],
     queryFn: async ({ pageParam = 0 }) => {
-      const url = `${apiPath}${separator}limit=${PAGE_SIZE}&offset=${pageParam}`;
-      return await request<PaginatedResponse<ValueSetRead>>(url, {
-        method: "GET",
-      });
+      return (await apis.valueset.list({
+        limit: PAGE_SIZE,
+        offset: pageParam,
+      })) as unknown as PaginatedResponse<ValueSetRead>;
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
@@ -82,7 +79,10 @@ export default function ValueSetExport({ facilityId }: ValueSetExportProps) {
     }
     const csvText = toCsvString(VALUESET_CSV_HEADERS, rows);
     // Debug: log row count and csvText length
-    console.log("Downloading ValueSets CSV:", { rowCount: rows.length, csvLength: csvText.length });
+    console.log("Downloading ValueSets CSV:", {
+      rowCount: rows.length,
+      csvLength: csvText.length,
+    });
     downloadCsv("valuesets_export.csv", csvText);
   };
 

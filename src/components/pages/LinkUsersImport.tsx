@@ -2,9 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { AlertCircle, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { queryString, request } from "@/apis/request";
-import type { FacilityOrganizationRead } from "@/types/location/facilityOrganization";
-import type { RoleRead } from "@/types/user/role";
+import { apis } from "@/apis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,16 +17,6 @@ import { parseCsvText } from "@/utils/csv";
 
 interface LinkUsersImportProps {
   facilityId?: string;
-}
-
-interface PaginatedResponse<T> {
-  results: T[];
-  count: number;
-}
-
-interface UserReadMinimal {
-  id: string;
-  username: string;
 }
 
 interface LinkUserRow {
@@ -174,14 +162,11 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
     try {
       await Promise.all(
         uniqueRoleNames.map(async (roleName) => {
-          const response = await request<PaginatedResponse<RoleRead>>(
-            `/api/v1/role/${queryString({
-              limit: 10,
-              offset: 0,
-              name: roleName,
-            })}`,
-            { method: "GET" },
-          );
+          const response = await apis.role.list({
+            limit: 10,
+            offset: 0,
+            name: roleName,
+          });
           const key = normalizeName(roleName);
           const match = response.results.find(
             (role) => normalizeName(role.name) === key,
@@ -195,11 +180,9 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
         }),
       );
 
-      const organizationsResponse = await request<
-        PaginatedResponse<FacilityOrganizationRead>
-      >(
-        `/api/v1/facility/${facilityId}/organizations/${queryString({ limit: 500 })}`,
-        { method: "GET" },
+      const organizationsResponse = await apis.facility.organizations.list(
+        facilityId!,
+        { limit: 500 },
       );
 
       const organizationLookup = new Map<string, string>();
@@ -412,10 +395,7 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
           };
         } else if (row.username) {
           try {
-            const user = await request<UserReadMinimal>(
-              `/api/v1/users/${row.username}/`,
-              { method: "GET" },
-            );
+            const user = await apis.user.get(row.username);
             updatedRow = {
               ...updatedRow,
               resolvedUserId: user.id,
@@ -514,14 +494,12 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
               continue;
             }
 
-            await request(
-              `/api/v1/facility/${facilityId}/organizations/${resolvedDepartmentId}/users/`,
+            await apis.facility.organizations.addUser(
+              facilityId!,
+              resolvedDepartmentId,
               {
-                method: "POST",
-                body: JSON.stringify({
-                  user: row.resolvedUserId,
-                  role: resolvedRoleId,
-                }),
+                user: row.resolvedUserId!,
+                role: resolvedRoleId,
               },
             );
           }

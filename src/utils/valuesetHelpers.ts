@@ -1,4 +1,4 @@
-import { APIError, request } from "@/apis/request";
+import { APIError, apis } from "@/apis";
 import type {
   CodeSystem,
   ValueSetComposeItem,
@@ -325,13 +325,7 @@ export async function lookupCode(
   code: string,
 ): Promise<LookupCodeResult> {
   try {
-    const result = await request<{ display?: string }>(
-      "/api/v1/valueset/lookup_code/",
-      {
-        method: "POST",
-        body: JSON.stringify({ system, code }),
-      },
-    );
+    const result = await apis.valueset.lookupCode({ system, code });
     return {
       system,
       code,

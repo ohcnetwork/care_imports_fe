@@ -1,4 +1,4 @@
-import { queryString, request } from "@/apis/request";
+import { apis } from "@/apis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,6 @@ import {
   fetchExistingId,
   normalizeName,
   type ImportResults,
-  type PaginatedResponse,
 } from "@/utils/importHelpers";
 import { parseActivityDefinitionCsv } from "@/utils/masterImport/activityDefinition";
 import { upsertResourceCategories } from "@/utils/resourceCategory";
@@ -139,9 +138,9 @@ export default function ActivityDefinitionCsvImport({
       await Promise.all(
         uniqueSpecimenSlugs.map(async (slug) => {
           try {
-            await request(
-              `/api/v1/facility/${facilityId}/specimen_definition/f-${facilityId}-${slug}/`,
-              { method: "GET" },
+            await apis.facility.specimenDefinition.get(
+              facilityId,
+              `f-${facilityId}-${slug}`,
             );
             validSpecimenSlugs.add(slug);
           } catch {
@@ -153,10 +152,7 @@ export default function ActivityDefinitionCsvImport({
       await Promise.all(
         uniqueObservationSlugs.map(async (slug) => {
           try {
-            await request(
-              `/api/v1/observation_definition/f-${facilityId}-${slug}/`,
-              { method: "GET" },
-            );
+            await apis.observationDefinition.get(`f-${facilityId}-${slug}`);
             validObservationSlugs.add(slug);
           } catch {
             issues.push(`Observation slug not found: ${slug}`);
@@ -167,9 +163,9 @@ export default function ActivityDefinitionCsvImport({
       await Promise.all(
         uniqueChargeItemSlugs.map(async (slug) => {
           try {
-            await request(
-              `/api/v1/facility/${facilityId}/charge_item_definition/f-${facilityId}-${slug}/`,
-              { method: "GET" },
+            await apis.facility.chargeItemDefinition.get(
+              facilityId,
+              `f-${facilityId}-${slug}`,
             );
             validChargeItemSlugs.add(slug);
           } catch {
@@ -180,15 +176,10 @@ export default function ActivityDefinitionCsvImport({
 
       await Promise.all(
         uniqueLocationNames.map(async (name) => {
-          const response = await request<
-            PaginatedResponse<{ name: string; id: string }>
-          >(
-            `/api/v1/facility/${facilityId}/location/${queryString({
-              name,
-              limit: 50,
-            })}`,
-            { method: "GET" },
-          );
+          const response = await apis.facility.location.list(facilityId, {
+            name,
+            limit: 50,
+          });
           const match = response.results.find(
             (item) => normalizeName(item.name) === normalizeName(name),
           );
@@ -202,14 +193,9 @@ export default function ActivityDefinitionCsvImport({
 
       await Promise.all(
         uniqueHealthcareServiceNames.map(async (name) => {
-          const response = await request<
-            PaginatedResponse<{ name: string; id: string }>
-          >(
-            `/api/v1/facility/${facilityId}/healthcare_service/${queryString({
-              name,
-              limit: 10,
-            })}`,
-            { method: "GET" },
+          const response = await apis.facility.healthcareService.list(
+            facilityId,
+            { name, limit: 10 },
           );
           const match = response.results.find(
             (item) => normalizeName(item.name) === normalizeName(name),
@@ -376,14 +362,12 @@ export default function ActivityDefinitionCsvImport({
         };
 
         const detailPath = `/api/v1/facility/${facilityId}/activity_definition/${detailSlug}/`;
-        const upsertPath = `/api/v1/facility/${facilityId}/activity_definition/upsert/`;
         const existingId = await fetchExistingId(detailPath);
         const datapoint = existingId
           ? { ...payload, id: `f-${facilityId}-${slug}` }
           : payload;
-        await request(upsertPath, {
-          method: "POST",
-          body: JSON.stringify({ datapoints: [datapoint] }),
+        await apis.facility.activityDefinition.upsert(facilityId, {
+          datapoints: [datapoint as unknown as Record<string, unknown>],
         });
         if (existingId) {
           setResults((prev) =>

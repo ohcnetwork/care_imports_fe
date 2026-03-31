@@ -2,7 +2,8 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Download, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
+import type { PaginatedResponse } from "@/apis/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +14,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import type { PaginatedResponse } from "@/utils/export";
 import {
   downloadCsv,
   stripFacilitySlugPrefix,
@@ -135,14 +135,16 @@ async function fetchDetails(
   for (let i = 0; i < slugs.length; i += DETAIL_CONCURRENCY) {
     const batch = slugs.slice(i, i + DETAIL_CONCURRENCY);
     const promises = batch.map((slug, batchIdx) => {
-      const url = `/api/v1/facility/${facilityId}/activity_definition/${slug}/`;
-      return request<ActivityDefinitionRead>(url, { method: "GET" }).then(
-        (detail) => {
-          results[i + batchIdx] = detail;
-          completed += 1;
-          onProgress(completed);
-        },
-      );
+      return (
+        apis.facility.activityDefinition.get(
+          facilityId,
+          slug,
+        ) as unknown as Promise<ActivityDefinitionRead>
+      ).then((detail) => {
+        results[i + batchIdx] = detail;
+        completed += 1;
+        onProgress(completed);
+      });
     });
     await Promise.all(promises);
   }
@@ -224,8 +226,6 @@ export default function ActivityDefinitionExport({
 }
 
 function ActivityDefinitionExportInner({ facilityId }: { facilityId: string }) {
-  const apiPath = `/api/v1/facility/${facilityId}/activity_definition/`;
-
   /* ---- Phase 1: paginated list fetch ---- */
   const {
     data,
@@ -238,10 +238,10 @@ function ActivityDefinitionExportInner({ facilityId }: { facilityId: string }) {
   } = useInfiniteQuery({
     queryKey: ["export", "activity-definition", facilityId],
     queryFn: async ({ pageParam = 0 }) => {
-      const url = `${apiPath}?limit=${PAGE_SIZE}&offset=${pageParam}`;
-      return await request<PaginatedResponse<ActivityDefinitionRead>>(url, {
-        method: "GET",
-      });
+      return (await apis.facility.activityDefinition.list(facilityId, {
+        limit: PAGE_SIZE,
+        offset: pageParam,
+      })) as unknown as PaginatedResponse<ActivityDefinitionRead>;
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {

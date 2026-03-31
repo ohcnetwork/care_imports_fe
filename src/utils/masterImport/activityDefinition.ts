@@ -1,42 +1,17 @@
+import type { Code } from "@/types/base/code/code";
+import type {
+  ActivityDefinitionProcessedRow,
+  ActivityDefinitionRow,
+  ParseActivityDefinitionOptions,
+} from "@/types/emr/activityDefinition/activityDefinition";
 import { parseCsvText } from "@/utils/csv";
 import { isUrlSafeSlug } from "@/utils/slug";
 
-export type CodePayload = {
-  system: string;
-  code: string;
-  display: string;
-};
-
-export type ActivityDefinitionRow = {
-  title: string;
-  slug_value: string;
-  description: string;
-  usage: string;
-  status: string;
-  classification: string;
-  kind: string;
-  code: CodePayload;
-  body_site: CodePayload | null;
-  diagnostic_report_codes: CodePayload[];
-  derived_from_uri?: string;
-  category_name: string;
-  specimen_slugs: string[];
-  observation_slugs: string[];
-  charge_item_slugs: string[];
-  charge_item_price?: string;
-  location_names: string[];
-  healthcare_service_name?: string;
-};
-
-export type ActivityDefinitionProcessedRow = {
-  rowIndex: number;
-  data: ActivityDefinitionRow;
-  errors: string[];
-};
-
-interface ParseActivityDefinitionOptions {
-  requireChargeItemPrice?: boolean;
-}
+export type {
+  ActivityDefinitionProcessedRow,
+  ActivityDefinitionRow,
+  ParseActivityDefinitionOptions,
+} from "@/types/emr/activityDefinition/activityDefinition";
 
 const REQUIRED_HEADERS = [
   "title",
@@ -212,7 +187,7 @@ export const parseActivityDefinitionCsv = (
       diagnosticSystems.length > 0 ||
       diagnosticCodes.length > 0 ||
       diagnosticDisplays.length > 0;
-    let diagnosticReportCodes: CodePayload[] = [];
+    let diagnosticReportCodes: Code[] = [];
 
     if (hasDiagnosticValues) {
       if (

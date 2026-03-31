@@ -1,4 +1,4 @@
-import { request } from "@/apis/request";
+import { request } from "@/apis";
 
 /**
  * Strip the facility-scoped slug prefix `f-{facilityId}-` from a slug.

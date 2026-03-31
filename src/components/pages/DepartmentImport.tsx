@@ -1,7 +1,7 @@
 import { AlertCircle, Upload } from "lucide-react";
 import { useState } from "react";
 
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -223,11 +223,10 @@ export default function DepartmentImport({
       );
     }
 
-    const existingResponse = await request<{
-      results: { id: string; name: string }[];
-    }>(`/api/v1/facility/${facilityId}/organizations/?limit=500`, {
-      method: "GET",
-    });
+    const existingResponse = await apis.facility.organizations.list(
+      facilityId,
+      { limit: 500 },
+    );
     const existingByName = new Map<string, string>();
     existingResponse.results.forEach((org) => {
       const key = normalizeName(org.name);
@@ -547,13 +546,7 @@ async function createDepartment(
     facility: facilityId,
   };
 
-  const created = (await request<{ id?: string }>(
-    `/api/v1/facility/${facilityId}/organizations/`,
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
-  )) as { id?: string } | null;
+  const created = await apis.facility.organizations.create(facilityId, payload);
 
   if (!created?.id) {
     throw new Error(`Failed to create department: ${name}`);

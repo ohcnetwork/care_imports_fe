@@ -1,4 +1,4 @@
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -492,9 +492,7 @@ function processRow(
 
 async function fetchUser(username: string) {
   try {
-    return await request<unknown>(`/api/v1/users/${username}/`, {
-      method: "GET",
-    });
+    return await apis.user.get(username);
   } catch (error) {
     if (error instanceof Error && "status" in error) {
       const status = (error as Error & { status?: number }).status;
@@ -511,7 +509,7 @@ async function createUser(user: NonNullable<ProcessedUserRow["normalized"]>) {
     ? user.phoneNumber
     : `+91${user.phoneNumber}`;
 
-  const payload = {
+  return await apis.user.create({
     user_type: user.userType,
     username: user.username,
     email: user.email,
@@ -521,10 +519,6 @@ async function createUser(user: NonNullable<ProcessedUserRow["normalized"]>) {
     password: user.password,
     phone_number: phoneNumber,
     geo_organization: user.geoOrganization,
-  };
-
-  return await request("/api/v1/users/", {
-    method: "POST",
-    body: JSON.stringify(payload),
+    role_orgs: [],
   });
 }

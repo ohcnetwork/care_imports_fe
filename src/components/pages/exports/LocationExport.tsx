@@ -2,7 +2,8 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Download, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo } from "react";
 
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
+import type { PaginatedResponse } from "@/apis/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +14,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import type { PaginatedResponse } from "@/utils/export";
 import { downloadCsv, toCsvString } from "@/utils/export";
 
 interface LocationExportProps {
@@ -122,9 +122,6 @@ export default function LocationExport({ facilityId }: LocationExportProps) {
 }
 
 function LocationExportInner({ facilityId }: { facilityId: string }) {
-  const separator = "?";
-  const apiPath = `/api/v1/facility/${facilityId}/location/`;
-
   const {
     data,
     fetchNextPage,
@@ -136,10 +133,10 @@ function LocationExportInner({ facilityId }: { facilityId: string }) {
   } = useInfiniteQuery({
     queryKey: ["export", "locations", facilityId],
     queryFn: async ({ pageParam = 0 }) => {
-      const url = `${apiPath}${separator}limit=${PAGE_SIZE}&offset=${pageParam}`;
-      return await request<PaginatedResponse<LocationRead>>(url, {
-        method: "GET",
-      });
+      return (await apis.facility.location.list(facilityId, {
+        limit: PAGE_SIZE,
+        offset: pageParam,
+      })) as unknown as PaginatedResponse<LocationRead>;
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {

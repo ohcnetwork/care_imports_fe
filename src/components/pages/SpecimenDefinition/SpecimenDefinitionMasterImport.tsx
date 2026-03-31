@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,10 +12,7 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { fetchExistingId } from "@/utils/importHelpers";
-import {
-  parseSpecimenDefinitionCsv,
-  type SpecimenProcessedRow,
-} from "@/utils/masterImport/specimenDefinition";
+import { parseSpecimenDefinitionCsv } from "@/utils/masterImport/specimenDefinition";
 
 import {
   CodeReference,
@@ -23,6 +20,7 @@ import {
   ImportResults,
   Preference,
   SpecimenDefinitionCreate,
+  type SpecimenProcessedRow,
   TypeTestedSpec,
 } from "@/types/emr/specimenDefinition/specimenDefinition";
 
@@ -115,12 +113,9 @@ export default function SpecimenDefinitionMasterImport({
     await Promise.all(
       uniqueCodeReferences.map(async (ref) => {
         try {
-          await request("/api/v1/valueset/lookup_code/", {
-            method: "POST",
-            body: JSON.stringify({
-              system: ref.code.system,
-              code: ref.code.code,
-            }),
+          await apis.valueset.lookupCode({
+            system: ref.code.system,
+            code: ref.code.code,
           });
         } catch {
           invalidSignatures.add(ref.signature);
@@ -262,15 +257,13 @@ export default function SpecimenDefinitionMasterImport({
 
         const detailSlug = `f-${facilityId}-${slug}`;
         const detailPath = `/api/v1/facility/${facilityId}/specimen_definition/${detailSlug}/`;
-        const upsertPath = `/api/v1/facility/${facilityId}/specimen_definition/upsert/`;
         const existingId = await fetchExistingId(detailPath);
         const datapoint = existingId
           ? { ...payload, id: `f-${facilityId}-${slug}` }
           : payload;
 
-        await request(upsertPath, {
-          method: "POST",
-          body: JSON.stringify({ datapoints: [datapoint] }),
+        await apis.facility.specimenDefinition.upsert(facilityId, {
+          datapoints: [datapoint as unknown as Record<string, unknown>],
         });
 
         setResults((prev) =>

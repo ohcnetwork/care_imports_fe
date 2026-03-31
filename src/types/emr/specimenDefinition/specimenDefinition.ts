@@ -155,6 +155,9 @@ export interface ProcessedRow {
   codeReferences: CodeReference[];
 }
 
+/** Alias kept for backward compatibility with masterImport consumers. */
+export type SpecimenProcessedRow = ProcessedRow;
+
 export interface ImportResults {
   processed: number;
   created: number;

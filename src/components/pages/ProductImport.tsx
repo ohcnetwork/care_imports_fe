@@ -1,7 +1,7 @@
 import { AlertCircle, CheckCircle2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { APIError, queryString, request } from "@/apis/request";
+import { APIError, apis } from "@/apis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -106,10 +106,6 @@ const stripMappingErrors = (errors: string[]) =>
       !error.startsWith("Product knowledge slug not found:") &&
       !error.startsWith("Charge item definition slug not found:"),
   );
-
-interface PaginatedResponse<T> {
-  results: T[];
-}
 
 const buildProductPayload = (
   productKnowledgeSlug: string,
@@ -260,18 +256,14 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
       await Promise.all(
         Array.from(pkNames).map(async (name) => {
           try {
-            const response = await request<
-              PaginatedResponse<{ name: string; slug: string }>
-            >(
-              `/api/v1/product_knowledge/${queryString({
-                facility: facilityId,
-                name,
-                limit: 10,
-              })}`,
-              { method: "GET" },
-            );
+            const response = await apis.productKnowledge.list({
+              facility: facilityId,
+              name,
+              limit: 10,
+            });
             const match = response.results.find(
-              (item) => normalizeName(item.name) === normalizeName(name),
+              (item: { name: string; slug: string }) =>
+                normalizeName(item.name) === normalizeName(name),
             );
             productKnowledgeMap[normalizeName(name)] = match?.slug ?? null;
           } catch (error) {
@@ -287,19 +279,16 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
       await Promise.all(
         Array.from(cidNames).map(async (name) => {
           try {
-            const response = await request<
-              PaginatedResponse<{ title: string; slug: string }>
-            >(
-              `/api/v1/facility/${facilityId}/charge_item_definition/${queryString(
-                {
-                  title: name,
-                  limit: 10,
-                },
-              )}`,
-              { method: "GET" },
+            const response = await apis.facility.chargeItemDefinition.list(
+              facilityId,
+              {
+                title: name,
+                limit: 10,
+              },
             );
             const match = response.results.find(
-              (item) => normalizeName(item.title) === normalizeName(name),
+              (item: { title: string; slug: string }) =>
+                normalizeName(item.title) === normalizeName(name),
             );
             chargeItemMap[normalizeName(name)] = match?.slug ?? null;
           } catch (error) {
@@ -316,10 +305,7 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
       await Promise.all(
         Array.from(pkSlugs).map(async (slug) => {
           try {
-            await request(
-              `/api/v1/product_knowledge/f-${facilityId}-${slug}/`,
-              { method: "GET" },
-            );
+            await apis.productKnowledge.get(`f-${facilityId}-${slug}`);
             validPkSlugs.add(slug);
           } catch {
             issues.push(`Product knowledge slug not found: ${slug}`);
@@ -331,9 +317,9 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
       await Promise.all(
         Array.from(cidSlugs).map(async (slug) => {
           try {
-            await request(
-              `/api/v1/facility/${facilityId}/charge_item_definition/f-${facilityId}-${slug}/`,
-              { method: "GET" },
+            await apis.facility.chargeItemDefinition.get(
+              facilityId,
+              `f-${facilityId}-${slug}`,
             );
             validCidSlugs.add(slug);
           } catch {
@@ -781,12 +767,8 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
               : undefined,
           };
 
-          const pkResponse = await request<{ slug: string }>(
-            `/api/v1/product_knowledge/`,
-            {
-              method: "POST",
-              body: JSON.stringify(payload),
-            },
+          const pkResponse = await apis.productKnowledge.create(
+            payload as unknown as Record<string, unknown>,
           );
           resolvedProductKnowledgeSlug = pkResponse.slug;
         }
@@ -819,12 +801,9 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
             ],
           };
 
-          const cidResponse = await request<{ slug: string }>(
-            `/api/v1/facility/${facilityId}/charge_item_definition/`,
-            {
-              method: "POST",
-              body: JSON.stringify(payload),
-            },
+          const cidResponse = await apis.facility.chargeItemDefinition.create(
+            facilityId,
+            payload as unknown as Record<string, unknown>,
           );
           resolvedChargeItemSlug = cidResponse.slug;
         }
@@ -835,10 +814,10 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
           row.data,
         );
 
-        await request(`/api/v1/facility/${facilityId}/product/`, {
-          method: "POST",
-          body: JSON.stringify(productPayload),
-        });
+        await apis.facility.product.create(
+          facilityId,
+          productPayload as unknown as Record<string, unknown>,
+        );
 
         setResults((prev) =>
           prev

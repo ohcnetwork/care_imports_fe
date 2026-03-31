@@ -1,4 +1,4 @@
-import { APIError, request } from "@/apis/request";
+import { APIError, request } from "@/apis";
 
 /**
  * Shared types for import pages.

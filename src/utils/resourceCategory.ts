@@ -1,4 +1,4 @@
-import { queryString, request } from "@/apis/request";
+import { apis } from "@/apis";
 import {
   ResourceCategoryRead,
   ResourceCategoryResourceType,
@@ -38,16 +38,14 @@ export async function upsertResourceCategories({
     return new Map<string, string>();
   }
 
-  const queryParams: Record<string, string | number> = {
-    limit: 200,
-    resource_type: resourceType,
-    resource_sub_type: ResourceCategorySubType.other,
-  };
-
-  const existingCategories = (await request(
-    `/api/v1/facility/${facilityId}/resource_category/${queryString(queryParams)}`,
-    { method: "GET" },
-  )) as { results: ResourceCategoryRead[] };
+  const existingCategories = (await apis.facility.resourceCategory.list(
+    facilityId,
+    {
+      limit: 200,
+      resource_type: resourceType,
+      resource_sub_type: ResourceCategorySubType.other,
+    },
+  )) as unknown as { results: ResourceCategoryRead[] };
 
   const existingLookup = new Map<string, string>();
   existingCategories.results.forEach((category) => {
@@ -66,18 +64,15 @@ export async function upsertResourceCategories({
     .map(({ category, slug }) => ({ category, slug }));
 
   if (newDatapoints.length > 0) {
-    await request(`/api/v1/facility/${facilityId}/resource_category/upsert/`, {
-      method: "POST",
-      body: JSON.stringify({
-        datapoints: newDatapoints.map(({ category, slug }) => {
-          const slugValue = `${slugPrefix}-${slug}`;
-          return {
-            title: category,
-            slug_value: slugValue,
-            resource_type: resourceType,
-            resource_sub_type: ResourceCategorySubType.other,
-          };
-        }),
+    await apis.facility.resourceCategory.upsert(facilityId, {
+      datapoints: newDatapoints.map(({ category, slug }) => {
+        const slugValue = `${slugPrefix}-${slug}`;
+        return {
+          title: category,
+          slug_value: slugValue,
+          resource_type: resourceType,
+          resource_sub_type: ResourceCategorySubType.other,
+        };
       }),
     });
   }

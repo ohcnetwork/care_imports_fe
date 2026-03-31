@@ -2,7 +2,8 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Download, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo } from "react";
 
-import { request } from "@/apis/request";
+import { apis } from "@/apis";
+import type { PaginatedResponse } from "@/apis/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +14,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import type { PaginatedResponse } from "@/utils/export";
 import {
   csvEscape,
   downloadCsv,
@@ -233,9 +233,6 @@ function ObservationDefinitionExportInner({
 }: {
   facilityId: string;
 }) {
-  const apiPath = `/api/v1/observation_definition/?facility=${facilityId}`;
-  const separator = "&";
-
   const {
     data,
     fetchNextPage,
@@ -247,10 +244,11 @@ function ObservationDefinitionExportInner({
   } = useInfiniteQuery({
     queryKey: ["export", "observation-definition", facilityId],
     queryFn: async ({ pageParam = 0 }) => {
-      const url = `${apiPath}${separator}limit=${PAGE_SIZE}&offset=${pageParam}`;
-      return await request<PaginatedResponse<ObservationDefinitionRead>>(url, {
-        method: "GET",
-      });
+      return (await apis.observationDefinition.list({
+        facility: facilityId,
+        limit: PAGE_SIZE,
+        offset: pageParam,
+      })) as unknown as PaginatedResponse<ObservationDefinitionRead>;
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {
@@ -284,10 +282,7 @@ function ObservationDefinitionExportInner({
       [...OBSERVATION_DEFINITION_CSV_HEADERS],
       defRows,
     );
-    downloadCsv(
-      `observation_definitions_export_${facilityId}.csv`,
-      defCsvText,
-    );
+    downloadCsv(`observation_definitions_export_${facilityId}.csv`, defCsvText);
 
     // Download components CSV (only if there are component rows)
     const compRows = buildComponentRows(allItems);
