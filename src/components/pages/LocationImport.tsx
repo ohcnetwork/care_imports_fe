@@ -1,5 +1,5 @@
 import { AlertCircle, ChevronDown, ChevronRight, Upload } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { apis } from "@/apis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -39,6 +39,7 @@ interface LocationImportFailure {
 interface LocationImportResults {
   processed: number;
   created: number;
+  skipped: number;
   failed: number;
   failures: LocationImportFailure[];
 }
@@ -46,6 +47,7 @@ interface LocationImportResults {
 interface LocationImportProgressUpdate {
   processed: number;
   created: number;
+  skipped: number;
   failed: number;
   failures?: LocationImportFailure[];
 }
@@ -174,7 +176,55 @@ export default function LocationImport({ facilityId }: LocationImportProps) {
   const [importTotal, setImportTotal] = useState(0);
   const [importProcessed, setImportProcessed] = useState(0);
   const [results, setResults] = useState<LocationImportResults | null>(null);
+  const [duplicateLocations, setDuplicateLocations] = useState<string[]>([]);
+  const [isValidating, setIsValidating] = useState(false);
   const { saveLocations } = useSaveLocations(facilityId ?? "");
+
+  // Validate for duplicates when entering the review step
+  useEffect(() => {
+    if (
+      currentStep !== "review" ||
+      !facilityId ||
+      processedLocations.length === 0
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const validate = async () => {
+      setIsValidating(true);
+      setDuplicateLocations([]);
+
+      try {
+        const existingLocations = await fetchAllLocations(facilityId);
+        const duplicates = findDuplicatesInTree(
+          processedLocations,
+          existingLocations,
+          undefined,
+          [],
+        );
+        if (!cancelled) {
+          setDuplicateLocations(duplicates);
+        }
+      } catch {
+        // If validation fails (e.g. network error), allow import to proceed
+        if (!cancelled) {
+          setDuplicateLocations([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsValidating(false);
+        }
+      }
+    };
+
+    validate();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentStep, facilityId, processedLocations]);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -238,7 +288,13 @@ export default function LocationImport({ facilityId }: LocationImportProps) {
     setImportTotal(total);
     setImportProcessed(0);
     setImportProgress(0);
-    setResults({ processed: 0, created: 0, failed: 0, failures: [] });
+    setResults({
+      processed: 0,
+      created: 0,
+      skipped: 0,
+      failed: 0,
+      failures: [],
+    });
 
     await saveLocations(processedLocations, {
       onProgress: (update: LocationImportProgressUpdate) => {
@@ -254,6 +310,7 @@ export default function LocationImport({ facilityId }: LocationImportProps) {
             ? {
                 processed: prev.processed + update.processed,
                 created: prev.created + update.created,
+                skipped: prev.skipped + update.skipped,
                 failed: prev.failed + update.failed,
                 failures: update.failures
                   ? [...prev.failures, ...update.failures]
@@ -410,6 +467,8 @@ Main Building,building,Main hospital building,Reception,room,Main reception area
     );
   }
 
+  const hasDuplicates = duplicateLocations.length > 0;
+
   return (
     <div className="max-w-7xl mx-auto">
       <Card>
@@ -423,13 +482,59 @@ Main Building,building,Main hospital building,Reception,room,Main reception area
           </div>
         </CardHeader>
         <CardContent>
+          {isValidating && (
+            <Alert className="mb-4">
+              <AlertDescription>
+                Checking for duplicate locations…
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {!isValidating && hasDuplicates && (
+            <Alert className="mb-4" variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <p className="font-medium mb-2">
+                  The following locations already exist in this facility and
+                  cannot be imported again:
+                </p>
+                <ul className="list-disc pl-5 space-y-1">
+                  {duplicateLocations.map((path) => (
+                    <li key={path} className="text-sm">
+                      {path}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-sm">
+                  Please remove the duplicate entries from your CSV and
+                  re-upload.
+                </p>
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div>
             <h3 className="text-lg font-semibold mb-4">Review All Locations</h3>
             <HierarchicalLocationPreview locations={processedLocations} />
           </div>
-          <div className="flex justify-end">
-            <Button className="mt-4" onClick={handleSaveLocations}>
-              Save
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              className="mt-4"
+              onClick={() => {
+                setCurrentStep("upload");
+                setProcessedLocations([]);
+                setDuplicateLocations([]);
+              }}
+            >
+              Back
+            </Button>
+            <Button
+              className="mt-4"
+              onClick={handleSaveLocations}
+              disabled={isValidating || hasDuplicates}
+            >
+              {isValidating ? "Validating…" : "Save"}
             </Button>
           </div>
         </CardContent>
@@ -653,6 +758,81 @@ const collectLocationFailures = (
   return failures;
 };
 
+interface ExistingLocation {
+  id: string;
+  name: string;
+  form: string;
+  parentId: string | null;
+}
+
+async function fetchAllLocations(
+  facilityId: string,
+): Promise<ExistingLocation[]> {
+  const PAGE_SIZE = 100;
+  const allLocations: ExistingLocation[] = [];
+  let offset = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await apis.facility.location.list(facilityId, {
+      limit: PAGE_SIZE,
+      offset,
+    });
+    for (const loc of response.results) {
+      allLocations.push({
+        id: loc.id,
+        name: loc.name,
+        form: loc.form,
+        parentId: loc.parent?.id ?? null,
+      });
+    }
+    offset += PAGE_SIZE;
+    hasMore = offset < response.count;
+  }
+
+  return allLocations;
+}
+
+/**
+ * Walks the import tree and returns a list of human-readable paths for any
+ * locations that already exist in the facility (matched by name + form + parent).
+ */
+function findDuplicatesInTree(
+  nodes: LocationImportWithDepartment[],
+  existingLocations: ExistingLocation[],
+  parentId: string | undefined,
+  pathParts: string[],
+): string[] {
+  const duplicates: string[] = [];
+
+  for (const node of nodes) {
+    const currentPath = [...pathParts, node.name].join(" → ");
+
+    const match = existingLocations.find(
+      (loc) =>
+        loc.name === node.name &&
+        loc.form === node.form &&
+        (parentId ? loc.parentId === parentId : loc.parentId === null),
+    );
+
+    if (match) {
+      duplicates.push(currentPath);
+
+      // Also check children against the matched parent
+      if (node.children.length > 0) {
+        duplicates.push(
+          ...findDuplicatesInTree(node.children, existingLocations, match.id, [
+            ...pathParts,
+            node.name,
+          ]),
+        );
+      }
+    }
+  }
+
+  return duplicates;
+}
+
 async function saveLocationTree(
   facilityId: string,
   parentId: string | undefined,
@@ -703,7 +883,12 @@ async function saveLocationTree(
         );
       }
 
-      options?.onProgress?.({ processed: 1, created: 1, failed: 0 });
+      options?.onProgress?.({
+        processed: 1,
+        created: 1,
+        skipped: 0,
+        failed: 0,
+      });
 
       if (node.children.length > 0) {
         await saveLocationTree(
@@ -720,6 +905,7 @@ async function saveLocationTree(
       options?.onProgress?.({
         processed: failures.length,
         created: 0,
+        skipped: 0,
         failed: failures.length,
         failures,
       });

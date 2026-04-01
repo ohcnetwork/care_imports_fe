@@ -174,12 +174,23 @@ export const apis = {
     location: {
       list: async (
         facilityId: string,
-        query?: { name?: string; limit?: number; offset?: number },
+        query?: {
+          name?: string;
+          parent?: string;
+          limit?: number;
+          offset?: number;
+        },
       ) => {
-        return await request<PaginatedResponse<{ id: string; name: string }>>(
-          `/api/v1/facility/${facilityId}/location/${queryString(query)}`,
-          { method: "GET" },
-        );
+        return await request<
+          PaginatedResponse<{
+            id: string;
+            name: string;
+            form: string;
+            parent?: { id: string; name: string } | null;
+          }>
+        >(`/api/v1/facility/${facilityId}/location/${queryString(query)}`, {
+          method: "GET",
+        });
       },
 
       create: async (facilityId: string, body: Record<string, unknown>) => {
