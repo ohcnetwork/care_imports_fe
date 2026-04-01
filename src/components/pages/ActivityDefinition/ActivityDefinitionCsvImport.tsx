@@ -1,4 +1,4 @@
-import { apis } from "@/apis";
+import { APIError, apis } from "@/apis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,11 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ResourceCategoryResourceType } from "@/types/base/resourceCategory/resourceCategory";
-import {
-  fetchExistingId,
-  normalizeName,
-  type ImportResults,
-} from "@/utils/importHelpers";
+import { normalizeName, type ImportResults } from "@/utils/importHelpers";
 import { parseActivityDefinitionCsv } from "@/utils/masterImport/activityDefinition";
 import { upsertResourceCategories } from "@/utils/resourceCategory";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
@@ -361,11 +357,21 @@ export default function ActivityDefinitionCsvImport({
           healthcare_service: row.resolved?.healthcareServiceId ?? null,
         };
 
-        const detailPath = `/api/v1/facility/${facilityId}/activity_definition/${detailSlug}/`;
-        const existingId = await fetchExistingId(detailPath);
-        const datapoint = existingId
-          ? { ...payload, id: `f-${facilityId}-${slug}` }
-          : payload;
+        let existingId: string | undefined;
+        try {
+          const existing = await apis.facility.activityDefinition.get(
+            facilityId,
+            detailSlug,
+          );
+          existingId = (existing as { id?: string }).id;
+        } catch (error) {
+          if (error instanceof APIError && error.status === 404) {
+            existingId = undefined;
+          } else {
+            throw error;
+          }
+        }
+        const datapoint = existingId ? { ...payload, id: detailSlug } : payload;
         await apis.facility.activityDefinition.upsert(facilityId, {
           datapoints: [datapoint as unknown as Record<string, unknown>],
         });

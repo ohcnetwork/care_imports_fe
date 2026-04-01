@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { apis } from "@/apis";
+import { APIError, apis } from "@/apis";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,7 +11,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { fetchExistingId } from "@/utils/importHelpers";
 import { parseSpecimenDefinitionCsv } from "@/utils/masterImport/specimenDefinition";
 
 import {
@@ -256,11 +255,21 @@ export default function SpecimenDefinitionMasterImport({
         };
 
         const detailSlug = `f-${facilityId}-${slug}`;
-        const detailPath = `/api/v1/facility/${facilityId}/specimen_definition/${detailSlug}/`;
-        const existingId = await fetchExistingId(detailPath);
-        const datapoint = existingId
-          ? { ...payload, id: `f-${facilityId}-${slug}` }
-          : payload;
+        let existingId: string | undefined;
+        try {
+          const existing = await apis.facility.specimenDefinition.get(
+            facilityId,
+            detailSlug,
+          );
+          existingId = (existing as { id?: string }).id;
+        } catch (error) {
+          if (error instanceof APIError && error.status === 404) {
+            existingId = undefined;
+          } else {
+            throw error;
+          }
+        }
+        const datapoint = existingId ? { ...payload, id: detailSlug } : payload;
 
         await apis.facility.specimenDefinition.upsert(facilityId, {
           datapoints: [datapoint as unknown as Record<string, unknown>],

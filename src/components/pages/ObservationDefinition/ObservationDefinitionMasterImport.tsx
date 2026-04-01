@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { apis, queryString } from "@/apis";
+import { APIError, apis } from "@/apis";
 import ObservationDefinitionReviewTable from "@/components/shared/ObservationDefinitionReviewTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import type { ObservationProcessedRow } from "@/types/emr/observationDefinition/observationDefinition";
-import { fetchExistingId, type ImportResults } from "@/utils/importHelpers";
+import { type ImportResults } from "@/utils/importHelpers";
 import { parseObservationDefinitionCsv } from "@/utils/masterImport/observationDefinition";
 
 interface ObservationDefinitionMasterImportProps {
@@ -121,11 +121,21 @@ export default function ObservationDefinitionMasterImport({
           qualified_ranges: row.data.qualified_ranges ?? [],
         };
 
-        const detailPath = `/api/v1/observation_definition/f-${facilityId}-${slug}/${queryString({ facility: facilityId })}`;
-        const existingId = await fetchExistingId(detailPath);
-        const datapoint = existingId
-          ? { ...payload, id: `f-${facilityId}-${slug}` }
-          : payload;
+        const detailSlug = `f-${facilityId}-${slug}`;
+        let existingId: string | undefined;
+        try {
+          const existing = await apis.observationDefinition.get(detailSlug, {
+            facility: facilityId,
+          });
+          existingId = (existing as { id?: string }).id;
+        } catch (error) {
+          if (error instanceof APIError && error.status === 404) {
+            existingId = undefined;
+          } else {
+            throw error;
+          }
+        }
+        const datapoint = existingId ? { ...payload, id: detailSlug } : payload;
         await apis.observationDefinition.upsert({
           datapoints: [datapoint as unknown as Record<string, unknown>],
         });

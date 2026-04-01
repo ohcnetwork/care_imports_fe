@@ -1,7 +1,7 @@
 import { AlertCircle } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { apis } from "@/apis";
+import { APIError, apis } from "@/apis";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +18,7 @@ import {
   ProductKnowledgeStatus,
   type ProductKnowledgeProcessedRow,
 } from "@/types/inventory/productKnowledge/productKnowledge";
-import { fetchExistingId, type ImportResults } from "@/utils/importHelpers";
+import { type ImportResults } from "@/utils/importHelpers";
 import {
   normalizeProductKnowledgeName,
   parseProductKnowledgeCsv,
@@ -167,8 +167,17 @@ export default function ProductKnowledgeMasterImport({
 
       try {
         const pkSlug = `f-${facilityId}-${productKnowledge.slug_value}`;
-        const detailPath = `/api/v1/product_knowledge/${pkSlug}/`;
-        const existingId = await fetchExistingId(detailPath);
+        let existingId: string | undefined;
+        try {
+          const existing = await apis.productKnowledge.get(pkSlug);
+          existingId = (existing as { id?: string }).id;
+        } catch (error) {
+          if (error instanceof APIError && error.status === 404) {
+            existingId = undefined;
+          } else {
+            throw error;
+          }
+        }
         if (existingId) {
           await apis.productKnowledge.update(
             pkSlug,

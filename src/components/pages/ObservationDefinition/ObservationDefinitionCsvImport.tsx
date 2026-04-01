@@ -81,6 +81,7 @@ export default function ObservationDefinitionCsvImport({
       try {
         const slug = row.data.slug_value;
         const payload = {
+          id: `f-${facilityId}-${slug}`,
           slug_value: slug,
           title: row.data.title,
           status: row.data.status,

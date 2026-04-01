@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { apis } from "@/apis";
+import { APIError, apis } from "@/apis";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -229,8 +229,25 @@ export default function SpecimenDefinitionCsvImport({
           type_tested: typeTested,
         };
 
+        const detailSlug = `f-${facilityId}-${slug}`;
+        let existingId: string | undefined;
+        try {
+          const existing = await apis.facility.specimenDefinition.get(
+            facilityId,
+            detailSlug,
+          );
+          existingId = (existing as { id?: string }).id;
+        } catch (error) {
+          if (error instanceof APIError && error.status === 404) {
+            existingId = undefined;
+          } else {
+            throw error;
+          }
+        }
+        const datapoint = existingId ? { ...payload, id: detailSlug } : payload;
+
         await apis.facility.specimenDefinition.upsert(facilityId, {
-          datapoints: [payload as unknown as Record<string, unknown>],
+          datapoints: [datapoint as unknown as Record<string, unknown>],
         });
 
         setResults((prev) =>
