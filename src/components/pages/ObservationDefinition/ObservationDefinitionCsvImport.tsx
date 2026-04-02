@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { apis } from "@/apis";
+import { APIError, apis } from "@/apis";
 import ObservationDefinitionReviewTable from "@/components/shared/ObservationDefinitionReviewTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,7 +81,6 @@ export default function ObservationDefinitionCsvImport({
       try {
         const slug = row.data.slug_value;
         const payload = {
-          id: `f-${facilityId}-${slug}`,
           slug_value: slug,
           title: row.data.title,
           status: row.data.status,
@@ -98,8 +97,23 @@ export default function ObservationDefinitionCsvImport({
           qualified_ranges: row.data.qualified_ranges ?? [],
         };
 
-        await apis.observationDefinition.upsert({
-          datapoints: [payload as unknown as Record<string, unknown>],
+        const detailSlug = `f-${facilityId}-${slug}`;
+        let existingId: string | undefined;
+        try {
+          const existing =
+            await apis.facility.observationDefinition.get(detailSlug);
+          existingId = (existing as { id?: string }).id;
+        } catch (error) {
+          if (error instanceof APIError && error.status === 404) {
+            existingId = undefined;
+          } else {
+            throw error;
+          }
+        }
+        const datapoint = existingId ? { ...payload, id: detailSlug } : payload;
+
+        await apis.facility.observationDefinition.upsert({
+          datapoints: [datapoint as unknown as Record<string, unknown>],
         });
 
         setResults((prev) =>

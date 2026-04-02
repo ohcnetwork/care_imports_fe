@@ -144,7 +144,9 @@ export default function ActivityDefinitionMasterImport({
     await Promise.all(
       Array.from(uniqueObservationSlugs).map(async (slug) => {
         try {
-          await apis.observationDefinition.get(`f-${facilityId}-${slug}`);
+          await apis.facility.observationDefinition.get(
+            `f-${facilityId}-${slug}`,
+          );
           validObservationSlugs.add(slug);
         } catch {
           issues.push(`Observation slug not found: ${slug}`);

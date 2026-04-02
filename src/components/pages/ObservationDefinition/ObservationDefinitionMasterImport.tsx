@@ -124,9 +124,12 @@ export default function ObservationDefinitionMasterImport({
         const detailSlug = `f-${facilityId}-${slug}`;
         let existingId: string | undefined;
         try {
-          const existing = await apis.observationDefinition.get(detailSlug, {
-            facility: facilityId,
-          });
+          const existing = await apis.facility.observationDefinition.get(
+            detailSlug,
+            {
+              facility: facilityId,
+            },
+          );
           existingId = (existing as { id?: string }).id;
         } catch (error) {
           if (error instanceof APIError && error.status === 404) {
@@ -136,7 +139,7 @@ export default function ObservationDefinitionMasterImport({
           }
         }
         const datapoint = existingId ? { ...payload, id: detailSlug } : payload;
-        await apis.observationDefinition.upsert({
+        await apis.facility.observationDefinition.upsert({
           datapoints: [datapoint as unknown as Record<string, unknown>],
         });
         if (existingId) {

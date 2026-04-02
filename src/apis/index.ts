@@ -140,33 +140,7 @@ export const apis = {
     },
   },
 
-  // ─── Observation Definition (non-facility-scoped) ────────────────
-  observationDefinition: {
-    list: async (query?: {
-      facility?: string;
-      limit?: number;
-      offset?: number;
-    }) => {
-      return await request<PaginatedResponse<Record<string, unknown>>>(
-        `/api/v1/observation_definition/${queryString(query)}`,
-        { method: "GET" },
-      );
-    },
-
-    get: async (slug: string, query?: { facility?: string }) => {
-      return await request<Record<string, unknown>>(
-        `/api/v1/observation_definition/${slug}/${queryString(query)}`,
-        { method: "GET" },
-      );
-    },
-
-    upsert: async (body: { datapoints: Record<string, unknown>[] }) => {
-      return await request("/api/v1/observation_definition/upsert/", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-    },
-  },
+  // ─── Observation Definition────────────────
 
   // ─── Facility-scoped resources ───────────────────────────────────
   facility: {
@@ -315,6 +289,33 @@ export const apis = {
             body: JSON.stringify(body),
           },
         );
+      },
+    },
+
+    observationDefinition: {
+      list: async (query?: {
+        facility?: string;
+        limit?: number;
+        offset?: number;
+      }) => {
+        return await request<PaginatedResponse<Record<string, unknown>>>(
+          `/api/v1/observation_definition/${queryString(query)}`,
+          { method: "GET" },
+        );
+      },
+
+      get: async (slug: string, query?: { facility?: string }) => {
+        return await request<Record<string, unknown>>(
+          `/api/v1/observation_definition/${slug}/${queryString(query)}`,
+          { method: "GET" },
+        );
+      },
+
+      upsert: async (body: { datapoints: Record<string, unknown>[] }) => {
+        return await request("/api/v1/observation_definition/upsert/", {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
       },
     },
 

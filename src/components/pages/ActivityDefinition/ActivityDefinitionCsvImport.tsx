@@ -148,7 +148,9 @@ export default function ActivityDefinitionCsvImport({
       await Promise.all(
         uniqueObservationSlugs.map(async (slug) => {
           try {
-            await apis.observationDefinition.get(`f-${facilityId}-${slug}`);
+            await apis.facility.observationDefinition.get(
+              `f-${facilityId}-${slug}`,
+            );
             validObservationSlugs.add(slug);
           } catch {
             issues.push(`Observation slug not found: ${slug}`);
