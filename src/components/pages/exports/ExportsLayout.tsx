@@ -117,12 +117,6 @@ export default function ExportsLayout({
     };
   }, []);
 
-  useEffect(() => {
-    if (!selectedFacilityId && facilities.length > 0) {
-      setSelectedFacilityId(facilities[0].id);
-    }
-  }, [facilities, selectedFacilityId]);
-
   const tabs = getTabConfig();
   const requiresFacility = activeTab !== "users";
   const canRenderContent = !requiresFacility || Boolean(selectedFacilityId);

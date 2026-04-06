@@ -123,14 +123,8 @@ export default function ImportsLayout({
     };
   }, []);
 
-  useEffect(() => {
-    if (!selectedFacilityId && facilities.length > 0) {
-      setSelectedFacilityId(facilities[0].id);
-    }
-  }, [facilities, selectedFacilityId]);
-
   const tabs = getTabConfig();
-  const requiresFacility = activeTab !== "users";
+  const requiresFacility = activeTab !== "users" && activeTab !== "valuesets";
   const canRenderContent = !requiresFacility || Boolean(selectedFacilityId);
   const content = React.isValidElement(children)
     ? React.cloneElement(
