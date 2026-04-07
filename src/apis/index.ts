@@ -1,7 +1,7 @@
 import { queryString, request } from "./request";
 import { PaginatedResponse } from "./types";
 
-export { APIError, formatApiError, queryString, request } from "./request";
+export { APIError, query, queryString, request } from "./request";
 export type { PaginatedResponse } from "./types";
 
 export const apis = {
@@ -31,7 +31,7 @@ export const apis = {
       password: string;
       phone_number: string;
       geo_organization?: string;
-      role_orgs: [];
+      role_orgs: string[];
     }) => {
       return await request("/api/v1/users/", {
         method: "POST",

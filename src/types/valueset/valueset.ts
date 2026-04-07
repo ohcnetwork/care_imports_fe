@@ -34,37 +34,80 @@ export const CODE_SYSTEM_LABELS: Record<CodeSystem, string> = {
   "http://unitsofmeasure.org": "Units of Measure",
 };
 
+export const TERMINOLOGY_SYSTEMS = {
+  LOINC: "http://loinc.org",
+  SNOMED: "http://snomed.info/sct",
+  UCUM: "http://unitsofmeasure.org",
+} as const;
+
+export type TerminologySystem = keyof typeof TERMINOLOGY_SYSTEMS;
+
+export enum ValueSetStatus {
+  ACTIVE = "active",
+  DRAFT = "draft",
+  RETIRED = "retired",
+  UNKNOWN = "unknown",
+}
+
+export interface ValueSetFilter {
+  op: string;
+  value: string;
+  property: string;
+}
+
 export interface ValueSetConcept {
   code: string;
   display: string;
 }
 
-export interface ValueSetFilter {
-  property: string;
-  op: ValueSetFilterOp;
-  value: string;
-}
-
-export interface ValueSetComposeItem {
-  system: CodeSystem;
-  concept: ValueSetConcept[];
-  filter: ValueSetFilter[];
+export interface ValueSetInclude {
+  filter?: ValueSetFilter[];
+  system: string;
+  concept?: ValueSetConcept[];
 }
 
 export interface ValueSetCompose {
-  include: ValueSetComposeItem[];
-  exclude: ValueSetComposeItem[];
+  include: ValueSetInclude[];
+  exclude: ValueSetInclude[];
 }
 
-export interface ValueSetCreate {
-  name: string;
+export interface ValueSetBase {
   slug: string;
+  name: string;
   description: string;
-  status: "active";
-  is_system_defined: boolean;
   compose: ValueSetCompose;
+  status: ValueSetStatus;
+  is_system_defined: boolean;
 }
 
-export interface ValueSetRead extends ValueSetCreate {
+export interface ValueSetRead extends ValueSetBase {
   id: string;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+export type ValueSetCreate = ValueSetBase;
+
+export interface ValueSetUpdate extends ValueSetBase {
+  id: string;
+}
+
+export interface ValueSetCodeMetadata {
+  code: string;
+  display: string;
+  name: string;
+  system: string;
+  version: string;
+  inactive: boolean;
+}
+
+export interface ValueSetLookupRequest {
+  system: string;
+  code: string;
+}
+
+export interface ValueSetLookupResponse {
+  designations: { details: unknown; context: Record<string, unknown> }[];
+  metadata: ValueSetCodeMetadata;
+  properties: Record<string, unknown>;
 }
