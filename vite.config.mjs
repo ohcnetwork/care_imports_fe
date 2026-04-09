@@ -31,14 +31,11 @@ export default defineConfig({
       polyfill: false,
     },
     rollupOptions: {
-      external: [],
-      input: {
-        main: "./src/index.ts",
-      },
       output: {
         format: "esm",
-        entryFileNames: "assets/[name].js",
-        chunkFileNames: "assets/[name].js",
+      },
+      input: {
+        main: "./src/index.ts",
       },
     },
   },
@@ -46,6 +43,11 @@ export default defineConfig({
     port: 5273,
     allowedHosts: true,
     host: "0.0.0.0",
+    cors: {
+      origin: "*",
+      methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+      credentials: true,
+    },
   },
   resolve: {
     alias: {
