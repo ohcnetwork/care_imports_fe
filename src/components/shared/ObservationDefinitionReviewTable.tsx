@@ -9,15 +9,13 @@ import {
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import type {
-  ObservationComponentPayload,
+  ObservationDefinitionComponentSpec,
   ObservationProcessedRow,
 } from "@/types/emr/observationDefinition/observationDefinition";
 import {
   formatComponentRanges,
   getComponentUnit,
 } from "@/utils/formatComponentRanges";
-
-type JsonObject = Record<string, unknown>;
 
 interface ObservationDefinitionReviewTableProps {
   processedRows: ObservationProcessedRow[];
@@ -153,7 +151,7 @@ export default function ObservationDefinitionReviewTable({
 function ComponentsSubTable({
   components,
 }: {
-  components: ObservationComponentPayload[];
+  components: ObservationDefinitionComponentSpec[];
 }) {
   return (
     <div className="ml-8 mt-2">
@@ -172,29 +170,21 @@ function ComponentsSubTable({
           </thead>
           <tbody>
             {components.map((comp, idx) => {
-              const code = comp.code as
-                | { code?: string; display?: string }
-                | undefined;
-              const dataType =
-                (comp.permitted_data_type as string | undefined) ?? "";
-              const qualifiedRanges = comp.qualified_ranges as
-                | JsonObject[]
-                | undefined;
-              const rangeLines = formatComponentRanges(qualifiedRanges);
+              const rangeLines = formatComponentRanges(comp.qualified_ranges);
               const unit = getComponentUnit(comp);
 
               return (
                 <tr key={idx} className="border-t border-gray-100">
-                  <td className="px-4 py-2">{code?.display ?? "-"}</td>
+                  <td className="px-4 py-2">{comp.code?.display ?? "-"}</td>
                   <td className="px-4 py-2">
-                    {dataType ? (
-                      <Badge variant="outline">{dataType}</Badge>
+                    {comp.permitted_data_type ? (
+                      <Badge variant="outline">{comp.permitted_data_type}</Badge>
                     ) : (
                       "-"
                     )}
                   </td>
                   <td className="px-4 py-2 font-mono text-xs">
-                    {code?.code ?? "-"}
+                    {comp.code?.code ?? "-"}
                   </td>
                   <td className="px-4 py-2 text-xs text-gray-600">
                     {rangeLines.length > 0 ? (
