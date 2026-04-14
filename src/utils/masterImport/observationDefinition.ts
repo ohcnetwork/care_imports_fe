@@ -1,15 +1,21 @@
 import type { Code } from "@/types/base/code/code";
+import type { Condition } from "@/types/base/condition/condition";
+import { ConditionOperation } from "@/types/base/condition/condition";
 import type {
-  JsonObject,
-  ObservationComponentPayload,
+  NumericRange,
+  QualifiedRange,
+} from "@/types/base/qualifiedRange/qualifiedRange";
+import { InterpretationType } from "@/types/base/qualifiedRange/qualifiedRange";
+import type {
   ObservationProcessedRow,
   ObservationRow,
 } from "@/types/emr/observationDefinition/observationDefinition";
+import type { ObservationDefinitionComponentCreateSpec } from "@/types/emr/observationDefinition/observationDefinition";
+import { QuestionType } from "@/types/emr/observationDefinition/observationDefinition";
 import { parseCsvText } from "@/utils/csv";
 import { isUrlSafeSlug } from "@/utils/slug";
 
 export type {
-  ObservationComponentPayload,
   ObservationProcessedRow,
   ObservationRow,
 } from "@/types/emr/observationDefinition/observationDefinition";
@@ -54,7 +60,7 @@ const QUESTION_TYPES = [
   "quantity",
 ] as const;
 
-const VALID_GENDERS = ["male", "female"] as const;
+const VALID_GENDERS = ["male", "female", "transgender", "non_binary"] as const;
 
 const VALID_AGE_OPS = ["years", "months", "days"] as const;
 
@@ -114,7 +120,7 @@ const buildConditionKey = (
 
 /**
  * Parse a components CSV string and return a map of
- *   observation_slug → ObservationComponentPayload[]
+ *   observation_slug → ObservationDefinitionComponentCreateSpec[]
  *
  * Grouping logic:
  *  1. (observation_slug, code_value) → one component
@@ -124,7 +130,7 @@ const buildConditionKey = (
 export const parseComponentCsv = (
   csvText: string,
 ): {
-  componentMap: Map<string, ObservationComponentPayload[]>;
+  componentMap: Map<string, ObservationDefinitionComponentCreateSpec[]>;
   errors: { csvRow: number; message: string }[];
 } => {
   const { headers, rows } = parseCsvText(csvText);
@@ -163,7 +169,7 @@ export const parseComponentCsv = (
   }
 
   // Intermediate structure for grouping:
-  //   slug → code_value → { meta, conditionKey → rangeBands[] }
+  //   slug → code_value → { component fields, conditionKey → rangeBands[] }
   type RangeBand = {
     display: string;
     min: string;
@@ -178,13 +184,9 @@ export const parseComponentCsv = (
     bands: RangeBand[];
   };
   type ComponentGroup = {
-    codeSystem: string;
-    codeValue: string;
-    codeDisplay: string;
-    permittedDataType: string;
-    unitSystem: string;
-    unitCode: string;
-    unitDisplay: string;
+    code: Code;
+    permitted_data_type: QuestionType;
+    permitted_unit: Code | null;
     interpretations: Map<string, InterpGroup>;
   };
 
@@ -253,7 +255,7 @@ export const parseComponentCsv = (
     if (gender && !VALID_GENDERS.includes(gender.toLowerCase() as never)) {
       errors.push({
         csvRow,
-        message: `Invalid gender "${gender}" (must be male/female)`,
+        message: `Invalid gender "${gender}" (must be male/female/transgender/non_binary)`,
       });
       return;
     }
@@ -273,13 +275,12 @@ export const parseComponentCsv = (
 
     if (!componentMap.has(codeValue)) {
       componentMap.set(codeValue, {
-        codeSystem,
-        codeValue,
-        codeDisplay,
-        permittedDataType,
-        unitSystem,
-        unitCode,
-        unitDisplay,
+        code: { system: codeSystem, code: codeValue, display: codeDisplay },
+        permitted_data_type: permittedDataType as QuestionType,
+        permitted_unit:
+          unitCode && unitDisplay
+            ? { system: unitSystem, code: unitCode, display: unitDisplay }
+            : null,
         interpretations: new Map(),
       });
     }
@@ -306,75 +307,62 @@ export const parseComponentCsv = (
     }
   });
 
-  // Convert grouped structure → Map<slug, ObservationComponentPayload[]>
-  const resultMap = new Map<string, ObservationComponentPayload[]>();
+  // Convert grouped structure → Map<slug, ObservationDefinitionComponentCreateSpec[]>
+  const resultMap = new Map<
+    string,
+    ObservationDefinitionComponentCreateSpec[]
+  >();
 
   for (const [slug, componentGroups] of slugMap) {
-    const components: ObservationComponentPayload[] = [];
+    const components: ObservationDefinitionComponentCreateSpec[] = [];
 
     for (const comp of componentGroups.values()) {
       // Build qualified_ranges from interpretation groups
-      const qualifiedRanges: JsonObject[] = [];
+      const qualifiedRanges: QualifiedRange[] = [];
 
       for (const interp of comp.interpretations.values()) {
         // Skip interpretation groups with no range bands
         if (interp.bands.length === 0) continue;
 
-        const conditions: JsonObject[] = [];
+        const conditions: Condition[] = [];
 
         if (interp.ageMin || interp.ageMax) {
-          const ageValue: JsonObject = { value_type: interp.ageOp || "years" };
-          if (interp.ageMin) ageValue.min = Number(interp.ageMin);
-          if (interp.ageMax) ageValue.max = Number(interp.ageMax);
           conditions.push({
             metric: "patient_age",
-            operation: "in_range",
-            value: ageValue,
+            operation: ConditionOperation.in_range,
+            value: {
+              min: Number(interp.ageMin) || 0,
+              max: Number(interp.ageMax) || 0,
+              value_type: interp.ageOp || "years",
+            },
           });
         }
         if (interp.gender) {
           conditions.push({
             metric: "patient_gender",
-            operation: "equality",
+            operation: ConditionOperation.equality,
             value: interp.gender,
           });
         }
 
-        const rangeBands: JsonObject[] = interp.bands.map((b) => {
-          const band: JsonObject = { interpretation: { display: b.display } };
-          if (b.min) band.min = b.min;
-          if (b.max) band.max = b.max;
-          return band;
-        });
+        const rangeBands: NumericRange[] = interp.bands.map((b) => ({
+          interpretation: { display: b.display },
+          ...(b.min ? { min: b.min } : {}),
+          ...(b.max ? { max: b.max } : {}),
+        }));
 
-        const qr: JsonObject = {
+        const qr: QualifiedRange = {
           ranges: rangeBands,
-          _interpretation_type: "ranges",
+          _interpretation_type: InterpretationType.ranges,
+          ...(conditions.length > 0 ? { conditions } : {}),
         };
-        if (conditions.length > 0) {
-          qr.conditions = conditions;
-        }
         qualifiedRanges.push(qr);
       }
 
-      // Build permitted_unit
-      let permittedUnit: Code | null = null;
-      if (comp.unitCode && comp.unitDisplay) {
-        permittedUnit = {
-          system: comp.unitSystem,
-          code: comp.unitCode,
-          display: comp.unitDisplay,
-        };
-      }
-
       components.push({
-        code: {
-          system: comp.codeSystem,
-          code: comp.codeValue,
-          display: comp.codeDisplay,
-        },
-        permitted_data_type: comp.permittedDataType,
-        permitted_unit: permittedUnit,
+        code: comp.code,
+        permitted_data_type: comp.permitted_data_type,
+        permitted_unit: comp.permitted_unit,
         qualified_ranges: qualifiedRanges,
       });
     }
@@ -416,7 +404,10 @@ export const parseObservationDefinitionCsv = (
   }
 
   // Parse components CSV if provided
-  let componentMap = new Map<string, ObservationComponentPayload[]>();
+  let componentMap = new Map<
+    string,
+    ObservationDefinitionComponentCreateSpec[]
+  >();
   let componentErrors: { csvRow: number; message: string }[] = [];
   if (compCsvText) {
     const result = parseComponentCsv(compCsvText);
@@ -507,7 +498,7 @@ export const parseObservationDefinitionCsv = (
     );
 
     // Attach components from the components CSV (matched by slug)
-    const component: ObservationComponentPayload[] =
+    const component: ObservationDefinitionComponentCreateSpec[] =
       (slugValue ? componentMap.get(slugValue) : undefined) ?? [];
 
     const qualifiedRangesRaw = getCellValue(
@@ -515,7 +506,7 @@ export const parseObservationDefinitionCsv = (
       headerMap,
       "qualified_ranges",
     ).trim();
-    let qualifiedRanges: JsonObject[] = [];
+    let qualifiedRanges: QualifiedRange[] = [];
     if (qualifiedRangesRaw) {
       try {
         const parsedRanges = JSON.parse(qualifiedRangesRaw);
@@ -526,7 +517,7 @@ export const parseObservationDefinitionCsv = (
               Boolean(v) && typeof v === "object" && !Array.isArray(v),
           )
         ) {
-          qualifiedRanges = parsedRanges as JsonObject[];
+          qualifiedRanges = parsedRanges as QualifiedRange[];
         } else {
           errors.push("Qualified ranges must be a JSON array of objects");
         }

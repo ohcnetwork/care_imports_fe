@@ -1,7 +1,7 @@
-import { APIError, apis } from "@/apis";
+import { APIError, query } from "@/apis/request";
 import type {
   CodeSystem,
-  ValueSetComposeItem,
+  ValueSetInclude,
   ValueSetConcept,
   ValueSetCreate,
   ValueSetFilter,
@@ -10,8 +10,10 @@ import type {
 import {
   VALUESET_CODE_SYSTEMS,
   VALUESET_FILTER_OPS,
+  ValueSetStatus,
 } from "@/types/valueset/valueset";
 import { parseCsvText } from "@/utils/csv";
+import valueSetApi from "@/types/valueset/valueSetApi";
 import { isUrlSafeSlug } from "@/utils/slug";
 
 // ---------------------------------------------------------------------------
@@ -325,11 +327,13 @@ export async function lookupCode(
   code: string,
 ): Promise<LookupCodeResult> {
   try {
-    const result = await apis.valueset.lookupCode({ system, code });
+    const result = await query(valueSetApi.lookupCode, {
+      body: { system, code },
+    });
     return {
       system,
       code,
-      display: result.display ?? "",
+      display: result.metadata?.display ?? result.metadata?.name,
       valid: true,
     };
   } catch (error) {
@@ -422,7 +426,7 @@ export function applyVerificationResults(
 // ---------------------------------------------------------------------------
 
 export function buildValueSetPayload(group: GroupedValueSet): ValueSetCreate {
-  const composeItems = new Map<string, ValueSetComposeItem>();
+  const composeItems = new Map<string, ValueSetInclude>();
 
   for (const row of group.rows) {
     if (row.errors.length > 0) continue;
@@ -445,19 +449,19 @@ export function buildValueSetPayload(group: GroupedValueSet): ValueSetCreate {
         code: row.data.code,
         display: row.resolvedDisplay ?? row.data.display ?? "",
       };
-      item.concept.push(concept);
+      item.concept?.push(concept);
     } else if (row.data.entry_type === "filter") {
       const filter: ValueSetFilter = {
         property: row.data.filter_property,
         op: row.data.filter_op as ValueSetFilterOp,
         value: row.data.filter_value,
       };
-      item.filter.push(filter);
+      item.filter?.push(filter);
     }
   }
 
-  const include: ValueSetComposeItem[] = [];
-  const exclude: ValueSetComposeItem[] = [];
+  const include: ValueSetInclude[] = [];
+  const exclude: ValueSetInclude[] = [];
 
   for (const [key, item] of composeItems) {
     if (key.startsWith("include::")) {
@@ -471,7 +475,7 @@ export function buildValueSetPayload(group: GroupedValueSet): ValueSetCreate {
     name: group.name,
     slug: group.slug,
     description: group.description,
-    status: "active",
+    status: ValueSetStatus.ACTIVE,
     is_system_defined: false,
     compose: { include, exclude },
   };
@@ -515,13 +519,13 @@ export function flattenValueSetToRows(vs: {
   name: string;
   slug: string;
   description: string;
-  compose: { include: ValueSetComposeItem[]; exclude: ValueSetComposeItem[] };
+  compose: { include: ValueSetInclude[]; exclude: ValueSetInclude[] };
 }): string[][] {
   const rows: string[][] = [];
   let isFirst = true;
 
   const processItems = (
-    items: ValueSetComposeItem[] | null | undefined,
+    items: ValueSetInclude[] | null | undefined,
     composeType: string,
   ) => {
     if (!items) return;
