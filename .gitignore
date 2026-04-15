@@ -15,6 +15,7 @@ node_modules
 # Playwright tests
 /test-results/
 /playwright-report/
+/tests/.auth/
 
 # Production
 dist

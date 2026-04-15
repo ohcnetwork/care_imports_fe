@@ -11,17 +11,19 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import {
-  GENDERS,
-  Gender,
   ImportResults,
-  NORMALIZED_HEADER_MAP,
   ProcessedUserRow,
-  REQUIRED_HEADERS,
   RawUserRow,
-} from "@/types/usersImport";
+} from "@/components/pages/Users/usersImport";
 import { parseCsvText } from "@/utils/csv";
 import { AlertCircle, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
+import {
+  Gender,
+  GenderSchema,
+  USER_HEADER_MAP,
+  USER_REQUIRED_HEADERS,
+} from "./Users/utils";
 
 export default function UsersImportPage() {
   const [currentStep, setCurrentStep] = useState<
@@ -58,7 +60,7 @@ export default function UsersImportPage() {
         }
 
         const headerMap = buildHeaderMap(headers);
-        const missingHeaders = REQUIRED_HEADERS.filter(
+        const missingHeaders = USER_REQUIRED_HEADERS.filter(
           (header) => headerMap[header] === undefined,
         );
 
@@ -427,7 +429,7 @@ function buildHeaderMap(headers: string[]) {
   const headerMap: Record<string, number> = {};
   headers.forEach((header, index) => {
     const normalized = normalizeHeader(header);
-    const mapped = NORMALIZED_HEADER_MAP[normalized];
+    const mapped = USER_HEADER_MAP[normalized];
     if (mapped) {
       headerMap[mapped] = index;
     }
@@ -447,14 +449,14 @@ function processRow(
 
   const errors: string[] = [];
 
-  REQUIRED_HEADERS.forEach((header) => {
+  USER_REQUIRED_HEADERS.forEach((header) => {
     if (!raw[header]?.trim()) {
       errors.push(`Missing ${header}`);
     }
   });
 
   const gender = raw.gender?.trim().toLowerCase() as Gender;
-  if (gender && !GENDERS.includes(gender)) {
+  if (gender && !GenderSchema.options.includes(gender)) {
     errors.push(`Invalid gender: ${raw.gender}`);
   }
 
