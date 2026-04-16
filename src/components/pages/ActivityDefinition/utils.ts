@@ -239,12 +239,35 @@ function validateActivityDefinitionCsvRowsSync(
 }
 
 /**
- * Async cross-row validation that also checks dependency existence against the backend.
- * Returns errors that will be shown in the review table.
+ * Shared cache populated by validateActivityDefinitionCsvRowsAsync
+ * and consumed by preCreate. Avoids duplicate API calls.
+ */
+export interface ActivityDefinitionValidationCache {
+  /** location name (normalized) → location ID */
+  locationIdMap: Map<string, string>;
+  /** healthcare service name (normalized) → service ID */
+  healthcareServiceIdMap: Map<string, string>;
+  /** category name (normalized) → category slug */
+  categorySlugMap: Map<string, string>;
+}
+
+export function createValidationCache(): ActivityDefinitionValidationCache {
+  return {
+    locationIdMap: new Map(),
+    healthcareServiceIdMap: new Map(),
+    categorySlugMap: new Map(),
+  };
+}
+
+/**
+ * Async cross-row validation that checks dependency existence against the backend.
+ * Also populates the provided cache with resolved IDs for locations and healthcare
+ * services, so preCreate can look them up without re-fetching.
  */
 export async function validateActivityDefinitionCsvRowsAsync(
   rows: ActivityDefinitionCsvRow[],
   facilityId: string,
+  cache?: ActivityDefinitionValidationCache,
 ): Promise<{ identifier: string; reason: string }[]> {
   const errors = validateActivityDefinitionCsvRowsSync(rows);
 
@@ -323,18 +346,22 @@ export async function validateActivityDefinitionCsvRowsAsync(
       }
     })(),
 
-    // Check locations by name (batch fetch)
+    // Check locations by name (batch fetch) — also populate cache with IDs
     (async () => {
       if (allLocationNames.size === 0) return;
       try {
         const response = await apis.facility.location.list(facilityId, {
           limit: 500,
         });
-        const existingNames = new Set(
-          response.results.map((loc) => normalizeName(loc.name)),
+        const locationsByName = new Map(
+          response.results.map((loc) => [normalizeName(loc.name), loc]),
         );
         for (const name of allLocationNames) {
-          locationResults.set(name, existingNames.has(normalizeName(name)));
+          const loc = locationsByName.get(normalizeName(name));
+          locationResults.set(name, !!loc);
+          if (loc && cache) {
+            cache.locationIdMap.set(normalizeName(name), loc.id);
+          }
         }
       } catch {
         for (const name of allLocationNames) {
@@ -343,7 +370,7 @@ export async function validateActivityDefinitionCsvRowsAsync(
       }
     })(),
 
-    // Check healthcare services (batch fetch)
+    // Check healthcare services (batch fetch) — also populate cache with IDs
     (async () => {
       if (allHealthcareServiceNames.size === 0) return;
       try {
@@ -351,11 +378,15 @@ export async function validateActivityDefinitionCsvRowsAsync(
           facilityId,
           { limit: 200 },
         );
-        const existingNames = new Set(
-          response.results.map((svc) => normalizeName(svc.name)),
+        const servicesByName = new Map(
+          response.results.map((svc) => [normalizeName(svc.name), svc]),
         );
         for (const name of allHealthcareServiceNames) {
-          hsResults.set(name, existingNames.has(normalizeName(name)));
+          const svc = servicesByName.get(normalizeName(name));
+          hsResults.set(name, !!svc);
+          if (svc && cache) {
+            cache.healthcareServiceIdMap.set(normalizeName(name), svc.id);
+          }
         }
       } catch {
         for (const name of allHealthcareServiceNames) {

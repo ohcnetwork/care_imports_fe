@@ -1,7 +1,6 @@
 import { AlertCircle, Database, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { apis } from "@/apis";
 import { APIError, query } from "@/apis/request";
 import { ImportFlow } from "@/components/imports";
 import MasterDataFileSelector from "@/components/shared/MasterDataFileSelector";
@@ -45,9 +44,11 @@ import {
   AD_REQUIRED_HEADERS,
   AD_SAMPLE_CSV,
   ActivityDefinitionCsvRowSchema,
+  createValidationCache,
   parseActivityDefinitionCsvRow,
   validateActivityDefinitionCsvRowsAsync,
   type ActivityDefinitionCsvRow,
+  type ActivityDefinitionValidationCache,
 } from "@/components/pages/ActivityDefinition/utils";
 import type { HealthcareServiceOption } from "@/utils/activityDefinitionHelper";
 import type { ResolvedRow } from "@/utils/activityDefinitionHelper";
@@ -60,12 +61,7 @@ interface ActivityDefinitionImportProps {
 
 // ─── beforeImport result type ──────────────────────────────────────
 
-interface CsvBeforeResult {
-  healthcareServices: Map<string, string>;
-  chargeItemCache: Map<string, string>;
-  locationCache: Map<string, string>;
-  categoryCache: Map<string, string>;
-}
+type CsvBeforeResult = ActivityDefinitionValidationCache;
 
 // ─── Active view states ────────────────────────────────────────────
 
@@ -105,6 +101,9 @@ export default function ActivityDefinitionImport({
   const { availability, files } = useMasterDataAvailability();
   const repoFileAvailable = availability["activity-definition"];
   const disableManualUpload = disableOverride && repoFileAvailable;
+
+  // Shared cache populated by validateRows, consumed by preCreate
+  const validationCacheRef = useRef(createValidationCache());
 
   // ─── Base Config (shared by CSV and master paths) ─────────────────
   const createBaseConfig = useCallback(() => {
@@ -148,126 +147,73 @@ export default function ActivityDefinitionImport({
       schema: ActivityDefinitionCsvRowSchema,
       parseRow: parseActivityDefinitionCsvRow,
 
-      // Cross-row validation (async — checks dependency existence against backend)
+      // Cross-row validation — also populates validationCacheRef with
+      // location IDs and healthcare service IDs for preCreate to use.
       validateRows: (rows) => {
         if (!facilityId) return [];
-        return validateActivityDefinitionCsvRowsAsync(rows, facilityId);
+        // Reset cache for fresh validation
+        validationCacheRef.current = createValidationCache();
+        return validateActivityDefinitionCsvRowsAsync(
+          rows,
+          facilityId,
+          validationCacheRef.current,
+        );
       },
 
       // Lifecycle hooks
       beforeImport: async () => {
-        const healthcareServices = new Map<string, string>();
-        if (facilityId) {
-          try {
-            const response = await apis.facility.healthcareService.list(
-              facilityId,
-              { limit: 200 },
-            );
-            for (const svc of response.results) {
-              healthcareServices.set(normalizeName(svc.name), svc.id);
-            }
-          } catch {
-            // proceed without — rows needing healthcare service will error in preCreate
-          }
-        }
-        return {
-          healthcareServices,
-          chargeItemCache: new Map<string, string>(),
-          locationCache: new Map<string, string>(),
-          categoryCache: new Map<string, string>(),
-        };
+        // Cache was already populated by validateRows — just return it.
+        return validationCacheRef.current;
       },
 
       preCreate: async (
         row: ActivityDefinitionCsvRow,
-        caches: CsvBeforeResult,
+        cache: CsvBeforeResult,
       ) => {
         if (!facilityId) throw new Error("Facility ID is required");
 
         const resolved: ResolvedRow = {
           specimenSlugs: [...row.specimen_slugs],
           observationSlugs: [...row.observation_slugs],
-          chargeItemSlugs: [],
+          chargeItemSlugs: [...row.charge_item_slugs],
           locationIds: [],
         };
 
-        // Resolve charge item by title (best-effort, not a hard dependency)
-        const title = row.title.trim();
-        if (title) {
-          const normalizedTitle = normalizeName(title);
-          if (!caches.chargeItemCache.has(normalizedTitle)) {
-            try {
-              const response = await apis.facility.chargeItemDefinition.list(
-                facilityId,
-                {
-                  title,
-                  limit: 10,
-                },
-              );
-              const match = response.results.find(
-                (item) => normalizeName(item.title) === normalizedTitle,
-              );
-              if (match) {
-                caches.chargeItemCache.set(normalizedTitle, match.slug);
-              }
-            } catch {
-              // not found
-            }
-          }
-          const chargeSlug = caches.chargeItemCache.get(normalizedTitle);
-          if (chargeSlug) {
-            resolved.chargeItemSlugs.push(chargeSlug);
-          }
-        }
-
-        // Resolve location names to IDs
+        // Look up location IDs from cache (populated by validateRows)
         for (const name of row.location_names) {
-          const normalizedName = normalizeName(name);
-          if (!caches.locationCache.has(normalizedName)) {
-            try {
-              const response = await apis.facility.location.list(facilityId, {
-                name,
-                limit: 50,
-              });
-              const match = response.results.find(
-                (item) => normalizeName(item.name) === normalizedName,
-              );
-              if (match) {
-                caches.locationCache.set(normalizedName, match.id);
-              }
-            } catch {
-              // not found — already caught in validateRows
-            }
-          }
-          const locationId = caches.locationCache.get(normalizedName);
+          const locationId = cache.locationIdMap.get(normalizeName(name));
           if (locationId) {
             resolved.locationIds.push(locationId);
           }
         }
 
-        // Resolve category
+        // Look up healthcare service ID from cache (populated by validateRows)
+        if (row.healthcare_service_name) {
+          const hsId = cache.healthcareServiceIdMap.get(
+            normalizeName(row.healthcare_service_name),
+          );
+          if (hsId) {
+            resolved.healthcareServiceId = hsId;
+          }
+        }
+
+        // Resolve category (upsert with cache)
         const categoryName = row.category_name.trim();
         if (categoryName) {
           const normalizedCat = normalizeName(categoryName);
-          if (!caches.categoryCache.has(normalizedCat)) {
+          if (!cache.categorySlugMap.has(normalizedCat)) {
             const catMap = await upsertResourceCategories({
               facilityId,
               categories: [categoryName],
               resourceType: ResourceCategoryResourceType.activity_definition,
               slugPrefix: "ad",
             });
-            catMap.forEach((slug, key) => caches.categoryCache.set(key, slug));
+            catMap.forEach((slug, key) =>
+              cache.categorySlugMap.set(key, slug),
+            );
           }
-          resolved.categorySlug = caches.categoryCache.get(normalizedCat) ?? "";
-        }
-
-        // Resolve healthcare service
-        if (row.healthcare_service_name) {
-          const normalizedHs = normalizeName(row.healthcare_service_name);
-          const hsId = caches.healthcareServices.get(normalizedHs);
-          if (hsId) {
-            resolved.healthcareServiceId = hsId;
-          }
+          resolved.categorySlug =
+            cache.categorySlugMap.get(normalizedCat) ?? "";
         }
 
         return resolved;
