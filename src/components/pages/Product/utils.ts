@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { normalizeHeader } from "../../../types/common";
+import { parse, format } from "date-fns";
 
 // ─── Item Types ────────────────────────────────────────────────────
 export const PRODUCT_TYPES = ["medication", "consumable"] as const;
@@ -47,7 +48,10 @@ export const ProductRowSchema = z
     inventoryQuantity: z.number().nonnegative(),
     dosageForm: z.string().optional(),
     lot_number: z.string().optional(),
-    expiration_date: z.string().optional(),
+    expiration_date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD")
+      .optional(),
     standard_pack_size: z.number().positive().optional(),
     purchase_price: z.number().nonnegative().optional(),
     product_knowledge_name: z.string().optional(),
@@ -219,7 +223,7 @@ export const PRODUCT_SAMPLE_CSV = {
       "100",
       "tablet",
       "LOT-0001",
-      "2027-12-31",
+      "31/12/2027",
       "10",
       "8.50",
       "Paracetamol",
@@ -268,6 +272,11 @@ export function parseProductRow(
     ? Number.parseFloat(purchasePriceStr)
     : undefined;
 
+  const rawDate = get("expiration_date") || undefined;
+  const expirationDate = rawDate
+    ? format(parse(rawDate, "dd/MM/yyyy", new Date()), "yyyy-MM-dd")
+    : undefined;
+
   return {
     name: get("name"),
     type: get("type") || undefined,
@@ -275,7 +284,7 @@ export function parseProductRow(
     inventoryQuantity: Number.isNaN(inventoryQuantity) ? 0 : inventoryQuantity,
     dosageForm: get("dosageForm") || undefined,
     lot_number: get("lot_number") || undefined,
-    expiration_date: get("expiration_date") || undefined,
+    expiration_date: expirationDate,
     standard_pack_size:
       standardPackSize && !Number.isNaN(standardPackSize)
         ? standardPackSize
