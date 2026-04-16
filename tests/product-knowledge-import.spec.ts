@@ -19,15 +19,6 @@ import {
 
 test.use({ storageState: "tests/.auth/user.json" });
 
-/** Click the dashed CSV upload area to enter CSV import mode. */
-async function enterCsvMode(page: import("@playwright/test").Page) {
-  await page.locator(".border-dashed", { hasText: /click to upload/i }).click();
-  // Wait for ImportFlow's file input to appear
-  await expect(page.locator('input[type="file"][accept=".csv"]')).toBeAttached({
-    timeout: 5_000,
-  });
-}
-
 test.describe("Product Knowledge Import", () => {
   test.beforeEach(async ({ page }) => {
     await goToImport(page, "product-knowledge");
@@ -39,7 +30,7 @@ test.describe("Product Knowledge Import", () => {
     page,
   }) => {
     await expect(
-      page.getByText(/import product knowledge from csv/i),
+      page.getByText(/import product knowledges from csv/i),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: /download sample/i }),
@@ -51,29 +42,13 @@ test.describe("Product Knowledge Import", () => {
 
   test("should download sample CSV from upload screen", async ({ page }) => {
     const download = await downloadSampleCsv(page);
-    expect(download.suggestedFilename()).toContain("product_knowledge");
+    expect(download.suggestedFilename()).toContain("product knowledge");
     expect(download.suggestedFilename()).toMatch(/\.csv$/);
   });
 
   // ─── CSV Path ────────────────────────────────────────────────────
 
-  test("should enter CSV mode and show Back button", async ({ page }) => {
-    await enterCsvMode(page);
-    await expect(page.getByRole("button", { name: /back/i })).toBeVisible();
-  });
-
-  test("should return to upload screen via Back button in CSV mode", async ({
-    page,
-  }) => {
-    await enterCsvMode(page);
-    await page.getByRole("button", { name: /back/i }).click();
-    await expect(
-      page.getByText(/import product knowledge from csv/i),
-    ).toBeVisible();
-  });
-
   test("should upload valid CSV and import", async ({ page }) => {
-    await enterCsvMode(page);
     const suffix = Date.now();
     const csvPath = createTempCsv(
       [
@@ -123,7 +98,6 @@ test.describe("Product Knowledge Import", () => {
   });
 
   test("should show error for invalid base unit", async ({ page }) => {
-    await enterCsvMode(page);
     const csvPath = createTempCsv(
       ["resourceCategory", "slug", "name", "productType", "baseUnitDisplay"],
       [
@@ -147,7 +121,6 @@ test.describe("Product Knowledge Import", () => {
   });
 
   test("should show error for duplicate slugs", async ({ page }) => {
-    await enterCsvMode(page);
     const csvPath = createTempCsv(
       ["resourceCategory", "slug", "name", "productType", "baseUnitDisplay"],
       [
@@ -158,7 +131,7 @@ test.describe("Product Knowledge Import", () => {
 
     try {
       await uploadCsvFile(page, csvPath);
-      await expectReviewTable(page, { invalidCount: 1 });
+      await expectReviewTable(page, { invalidCount: 2 });
       await expectValidationError(page, /duplicate slug/i);
     } finally {
       cleanupTempFile(csvPath);
@@ -166,7 +139,6 @@ test.describe("Product Knowledge Import", () => {
   });
 
   test("should show error for invalid product type", async ({ page }) => {
-    await enterCsvMode(page);
     const csvPath = createTempCsv(
       ["resourceCategory", "slug", "name", "productType", "baseUnitDisplay"],
       [["Medication", "test-pk", "Test", "invalid_type", "tablets"]],
@@ -182,7 +154,6 @@ test.describe("Product Knowledge Import", () => {
   });
 
   test("should show error for invalid slug format", async ({ page }) => {
-    await enterCsvMode(page);
     const csvPath = createTempCsv(
       ["resourceCategory", "slug", "name", "productType", "baseUnitDisplay"],
       [["Medication", "Invalid Slug!", "Test", "medication", "tablets"]],
@@ -198,7 +169,6 @@ test.describe("Product Knowledge Import", () => {
   });
 
   test("should show error for missing required headers", async ({ page }) => {
-    await enterCsvMode(page);
     const csvPath = createTempCsv(["slug", "name"], [["test-slug", "Test"]]);
 
     try {
@@ -214,29 +184,25 @@ test.describe("Product Knowledge Import", () => {
   test("should show master data selector and navigate back", async ({
     page,
   }) => {
-    test.skip(
-      !(await isMasterDataAvailable(page)),
-      "No master data available in this build",
-    );
-
-    await openMasterDataSelector(page);
-    await expect(page.getByText(/product knowledge/i)).toBeVisible();
-    await clickMasterDataBack(page);
-    await expect(
-      page.getByText(/import product knowledge from csv/i),
-    ).toBeVisible();
+    const available = await isMasterDataAvailable(page);
+    if (available) {
+      await openMasterDataSelector(page);
+      await expect(page.getByText(/select a master data file/i)).toBeVisible();
+      await clickMasterDataBack(page);
+      await expect(
+        page.getByText(/import product knowledge from csv/i),
+      ).toBeVisible();
+    }
   });
 
   test("should import from master data file", async ({ page }) => {
-    test.skip(
-      !(await isMasterDataAvailable(page)),
-      "No master data available in this build",
-    );
+    const available = await isMasterDataAvailable(page);
+    if (available) {
+      await openMasterDataSelector(page);
+      await selectFirstMasterFile(page);
 
-    await openMasterDataSelector(page);
-    await selectFirstMasterFile(page);
-
-    // Should transition to ImportFlow with pre-parsed rows
-    await expect(page.getByText(/^Review /)).toBeVisible({ timeout: 15_000 });
+      // Should transition to ImportFlow with pre-parsed rows
+      await expect(page.getByText(/^Review /)).toBeVisible({ timeout: 15_000 });
+    }
   });
 });

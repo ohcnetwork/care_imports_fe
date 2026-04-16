@@ -155,7 +155,7 @@ test.describe("Product Import", () => {
           "medication",
           "50",
           "LOT-001",
-          "2027-12-31",
+          "31/12/2027",
           `Test PK ${suffix}`,
         ],
       ],

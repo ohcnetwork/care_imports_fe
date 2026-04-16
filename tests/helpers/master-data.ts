@@ -14,11 +14,17 @@ export async function isMasterDataAvailable(page: Page): Promise<boolean> {
     name: /import master data/i,
   });
   const noDatasetText = page.getByText(/no bundled dataset/i);
-
-  // Wait for the hook to finish: either the button or the fallback text appears
-  await expect(importButton.or(noDatasetText)).toBeVisible({ timeout: 15_000 });
-
-  return importButton.isVisible({ timeout: 20_000 });
+  let increment = 5;
+  while (increment > 0) {
+    if (await importButton.isVisible()) {
+      break;
+    }
+    if (await noDatasetText.isVisible()) {
+      await page.waitForTimeout(5_000);
+      increment--;
+    }
+  }
+  return importButton.isVisible();
 }
 
 /**
