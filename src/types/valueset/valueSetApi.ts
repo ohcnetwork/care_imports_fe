@@ -9,7 +9,7 @@ import {
   ValueSetLookupResponse,
   ValueSetRead,
   ValueSetUpdate,
-} from "@/types/valueSet/valueset";
+} from "@/types/valueSet/valueSet";
 
 export default {
   list: {

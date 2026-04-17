@@ -20,7 +20,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import valueSetApi from "@/types/valueset/valueSetApi";
+import valueSetApi from "@/types/valueSet/valueSetApi";
 import { downloadCsv } from "@/Utils/csv";
 import { mutate } from "@/Utils/request/mutate";
 import type {
