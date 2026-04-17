@@ -22,7 +22,8 @@
 
     /* Path mapping */
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@careConfig": ["./care.config.ts"]
     }
   },
   "include": ["src"]
