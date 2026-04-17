@@ -586,16 +586,13 @@ async function importGroup(
   try {
     const payload = buildValueSetPayload(group);
     let existingValueSet = undefined;
-    let exists = false;
 
     try {
       existingValueSet = await request(valueSetApi.get, {
         pathParams: { slug: group.slug },
       });
-      exists = true;
     } catch (error) {
       if (error instanceof HttpError && error.status === 404) {
-        exists = false;
       } else {
         throw error;
       }
