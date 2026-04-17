@@ -1,21 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
 import { Database } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 
-import { APIError, query } from "@/apis/request";
-import specimenDefinitionApi from "@/types/emr/specimenDefinition/specimenDefinitionApi";
+import { HttpError, request } from "@/apis/request";
 import { ImportFlow } from "@/components/imports";
-import MasterDataFileSelector from "@/components/shared/MasterDataFileSelector";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { disableOverride } from "@/config";
-import { useMasterDataAvailability } from "@/hooks/useMasterDataAvailability";
-import type { ImportConfig, ProcessedRow } from "@/types/importConfig";
 import {
   SD_CSV_REVIEW_COLUMNS,
   SD_HEADER_MAP,
@@ -32,6 +19,20 @@ import {
   type SpecimenDefinitionCsvRow,
   type SpecimenDefinitionRow,
 } from "@/components/pages/SpecimenDefinition/utils";
+import MasterDataFileSelector from "@/components/shared/MasterDataFileSelector";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { disableOverride } from "@/config";
+import { useMasterDataAvailability } from "@/hooks/useMasterDataAvailability";
+import type { ImportConfig, ProcessedRow } from "@/internalTypes/importConfig";
+import specimenDefinitionApi from "@/types/emr/specimenDefinition/specimenDefinitionApi";
+import { mutate } from "@/Utils/request/mutate";
 
 interface SpecimenDefinitionImportNewProps {
   facilityId?: string;
@@ -72,12 +73,12 @@ export default function SpecimenDefinitionImportNew({
         if (!facilityId) return undefined;
         const slug = `f-${facilityId}-${row.slug_value}`;
         try {
-          await query(specimenDefinitionApi.get, {
+          await request(specimenDefinitionApi.retrieveSpecimenDefinition, {
             pathParams: { facilityId, specimenSlug: slug },
           });
           return slug;
         } catch (error) {
-          if (error instanceof APIError && error.status === 404) {
+          if (error instanceof HttpError && error.status === 404) {
             return undefined;
           }
           throw error;
@@ -104,18 +105,16 @@ export default function SpecimenDefinitionImportNew({
       // API operations
       createResource: async (row) => {
         if (!facilityId) return;
-        await query(specimenDefinitionApi.create, {
+        await mutate(specimenDefinitionApi.createSpecimenDefinition, {
           pathParams: { facilityId },
-          body: toSpecimenDefinitionCsvPayload(row),
-        });
+        })(toSpecimenDefinitionCsvPayload(row));
       },
 
       updateResource: async (existingSlug, row) => {
         if (!facilityId) return;
-        await query(specimenDefinitionApi.update, {
+        await mutate(specimenDefinitionApi.updateSpecimenDefinition, {
           pathParams: { facilityId, specimenSlug: existingSlug },
-          body: toSpecimenDefinitionCsvPayload(row, existingSlug),
-        });
+        })(toSpecimenDefinitionCsvPayload(row, existingSlug));
       },
 
       // UI
@@ -142,18 +141,16 @@ export default function SpecimenDefinitionImportNew({
 
       createResource: async (row) => {
         if (!facilityId) return;
-        await query(specimenDefinitionApi.create, {
+        await mutate(specimenDefinitionApi.createSpecimenDefinition, {
           pathParams: { facilityId },
-          body: toSpecimenDefinitionDatapoint(row),
-        });
+        })(toSpecimenDefinitionDatapoint(row));
       },
 
       updateResource: async (existingSlug, row) => {
         if (!facilityId) return;
-        await query(specimenDefinitionApi.update, {
+        await mutate(specimenDefinitionApi.updateSpecimenDefinition, {
           pathParams: { facilityId, specimenSlug: existingSlug },
-          body: toSpecimenDefinitionDatapoint(row, existingSlug),
-        });
+        })(toSpecimenDefinitionDatapoint(row, existingSlug));
       },
     }),
     [facilityId, createBaseConfig],

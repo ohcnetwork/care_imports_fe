@@ -2,13 +2,13 @@ import { CsvUploader } from "@/components/imports/CsvUploader";
 import { ImportProgress } from "@/components/imports/ImportProgress";
 import { ReviewTable } from "@/components/imports/ReviewTable";
 import { useImportMutation } from "@/hooks/useImportMutation";
+import { buildHeaderMap, validateRow } from "@/internalTypes/common";
 import type {
   ImportConfig,
   ImportStep,
   ProcessedRow,
-} from "@/types/importConfig";
-import { buildHeaderMap, validateRow } from "@/types/common";
-import { parseCsvText } from "@/utils/csv";
+} from "@/internalTypes/importConfig";
+import { parseCsvText } from "@/Utils/csv";
 import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 

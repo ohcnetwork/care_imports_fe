@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { normalizeHeader } from "../../../types/common";
+import { normalizeHeader } from "@/internalTypes/common";
+import { UserCreate } from "@/types/user/user";
 
 // ─── Required & Optional Headers ───────────────────────────────────
 export const USER_REQUIRED_HEADERS = [
@@ -56,7 +57,7 @@ export const UserRowSchema = z.object({
 export type UserRow = z.infer<typeof UserRowSchema>;
 
 // ─── API Payload Transformer ───────────────────────────────────────
-export function toUserCreatePayload(row: UserRow) {
+export function toUserCreatePayload(row: UserRow): UserCreate {
   // Normalize phone number to include country code
   const phoneNumber = row.phoneNumber.startsWith("+")
     ? row.phoneNumber
@@ -69,7 +70,6 @@ export function toUserCreatePayload(row: UserRow) {
     .replace(/[^a-z0-9_-]/g, "_");
 
   return {
-    user_type: row.userType.trim().toLowerCase(),
     username,
     email: row.email.trim(),
     first_name: row.firstName.trim(),
@@ -78,7 +78,7 @@ export function toUserCreatePayload(row: UserRow) {
     password: row.password.trim(),
     phone_number: phoneNumber,
     geo_organization: row.geoOrganization?.trim() || undefined,
-    role_orgs: row.role_orgs || [],
+    role_orgs: [],
   };
 }
 

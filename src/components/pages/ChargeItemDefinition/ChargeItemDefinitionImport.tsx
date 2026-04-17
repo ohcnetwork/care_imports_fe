@@ -1,22 +1,7 @@
 import { useMemo, useState } from "react";
 
-import { APIError, query } from "@/apis/request";
-import chargeItemDefinitionApi from "@/types/billing/chargeItemDefinition/chargeItemDefinitionApi";
-import resourceCategoryApi from "@/types/base/resourceCategory/resourceCategoryApi";
+import { HttpError, request } from "@/apis/request";
 import { ImportFlow } from "@/components/imports";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import type { ImportConfig } from "@/types/importConfig";
-import {
-  ResourceCategoryResourceType,
-  ResourceCategorySubType,
-} from "@/types/base/resourceCategory/resourceCategory";
 import {
   CHARGE_ITEM_HEADER_MAP,
   CHARGE_ITEM_REQUIRED_HEADERS,
@@ -27,9 +12,25 @@ import {
   toChargeItemCreatePayload,
   validateChargeItemRows,
 } from "@/components/pages/ChargeItemDefinition/utils";
-import { createSlug } from "@/utils/slug";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import type { ImportConfig } from "@/internalTypes/importConfig";
+import {
+  ResourceCategoryResourceType,
+  ResourceCategorySubType,
+} from "@/types/base/resourceCategory/resourceCategory";
+import resourceCategoryApi from "@/types/base/resourceCategory/resourceCategoryApi";
+import chargeItemDefinitionApi from "@/types/billing/chargeItemDefinition/chargeItemDefinitionApi";
+import { downloadCsv } from "@/Utils/csv";
+import { mutate } from "@/Utils/request/mutate";
+import { createSlug } from "@/Utils/slug";
 import { Download, Upload } from "lucide-react";
-import { downloadCsv } from "@/utils/csv";
 
 interface ChargeItemDefinitionImportProps {
   facilityId?: string;
@@ -56,12 +57,12 @@ function createChargeItemImportConfig(
     checkExists: async (row) => {
       const slug = `f-${facilityId}-${row.slug_value.trim()}`;
       try {
-        await query(chargeItemDefinitionApi.get, {
+        await request(chargeItemDefinitionApi.retrieveChargeItemDefinition, {
           pathParams: { facilityId, slug },
         });
         return slug;
       } catch (error) {
-        if (error instanceof APIError && error.status === 404) {
+        if (error instanceof HttpError && error.status === 404) {
           return undefined;
         }
         throw error;
@@ -70,10 +71,12 @@ function createChargeItemImportConfig(
 
     createResource: async (row) => {
       const payload = toChargeItemCreatePayload(row, categorySlug);
-      const created = await query(chargeItemDefinitionApi.create, {
-        pathParams: { facilityId },
-        body: payload,
-      });
+      const created = await mutate(
+        chargeItemDefinitionApi.createChargeItemDefinition,
+        {
+          pathParams: { facilityId },
+        },
+      )(payload);
       if (!created?.slug) {
         throw new Error(`Failed to create charge item: ${row.title}`);
       }
@@ -82,10 +85,9 @@ function createChargeItemImportConfig(
 
     updateResource: async (slug, row) => {
       const payload = toChargeItemCreatePayload(row, categorySlug);
-      await query(chargeItemDefinitionApi.update, {
+      await mutate(chargeItemDefinitionApi.updateChargeItemDefinition, {
         pathParams: { facilityId, slug },
-        body: payload,
-      });
+      })(payload);
     },
 
     // Cross-row validation
@@ -150,7 +152,7 @@ export default function ChargeItemDefinitionImport({
 
     try {
       // Check if category already exists
-      const existingCategories = await query(resourceCategoryApi.list, {
+      const existingCategories = await request(resourceCategoryApi.list, {
         pathParams: { facilityId },
         queryParams: {
           limit: 100,
@@ -170,14 +172,13 @@ export default function ChargeItemDefinitionImport({
       } else {
         // Create new category
         slug = await createSlug(title);
-        await query(resourceCategoryApi.create, {
+        await mutate(resourceCategoryApi.create, {
           pathParams: { facilityId },
-          body: {
-            title,
-            slug_value: slug,
-            resource_type: ResourceCategoryResourceType.charge_item_definition,
-            resource_sub_type: ResourceCategorySubType.other,
-          },
+        })({
+          title,
+          slug_value: slug,
+          resource_type: ResourceCategoryResourceType.charge_item_definition,
+          resource_sub_type: ResourceCategorySubType.other,
         });
       }
 

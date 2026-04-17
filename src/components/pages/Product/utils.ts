@@ -1,6 +1,20 @@
 import { z } from "zod";
-import { normalizeHeader } from "../../../types/common";
 import { parse, format } from "date-fns";
+import {
+  ProductKnowledgeCreate,
+  ProductKnowledgeStatus,
+  ProductKnowledgeType,
+} from "@/types/inventory/productKnowledge/productKnowledge";
+import {
+  ChargeItemDefinitionCreate,
+  ChargeItemDefinitionStatus,
+} from "@/types/billing/chargeItemDefinition/chargeItemDefinition";
+import {
+  ProductCreate,
+  ProductStatusOptions,
+} from "@/types/inventory/product/product";
+import { MonetaryComponentType } from "@/types/base/monetaryComponent/monetaryComponent";
+import { normalizeHeader } from "@/internalTypes/common";
 
 // ─── Item Types ────────────────────────────────────────────────────
 export const PRODUCT_TYPES = ["medication", "consumable"] as const;
@@ -106,17 +120,17 @@ export function toProductKnowledgePayload(
   slugValue: string,
   categorySlug: string,
   facilityId: string,
-) {
+): ProductKnowledgeCreate {
   const pkName = row.product_knowledge_name?.trim() || row.name;
 
   return {
     facility: facilityId,
     slug_value: slugValue,
     name: pkName,
-    status: "active",
+    status: ProductKnowledgeStatus.active,
     names: [],
     storage_guidelines: [],
-    product_type: row.type,
+    product_type: row.type as ProductKnowledgeType,
     base_unit: {
       system: "http://unitsofmeasure.org",
       code: "{count}",
@@ -144,19 +158,19 @@ export function toChargeItemPayload(
   row: ProductRow,
   slugValue: string,
   categorySlug: string,
-) {
+): ChargeItemDefinitionCreate {
   const cidName = row.charge_item_definition_name?.trim() || row.name;
 
   return {
     title: cidName,
     slug_value: slugValue,
-    status: "active",
+    status: ChargeItemDefinitionStatus.active,
     can_edit_charge_item: true,
     discount_configuration: null,
     category: categorySlug,
     price_components: [
       {
-        monetary_component_type: "base",
+        monetary_component_type: MonetaryComponentType.base,
         amount: row.basePrice?.trim() ?? "",
       },
     ],
@@ -167,10 +181,10 @@ export function toProductPayload(
   productKnowledgeSlug: string,
   chargeItemSlug: string | undefined,
   row: ProductRow,
-) {
-  const payload: Record<string, unknown> = {
+): ProductCreate {
+  const payload: ProductCreate = {
     product_knowledge: productKnowledgeSlug,
-    status: "active",
+    status: ProductStatusOptions.active,
     extensions: {},
   };
 

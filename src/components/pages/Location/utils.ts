@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LocationForm } from "../../../types/location/location";
+import { LocationForm } from "@/types/location/location";
 
 // ─── Shared Helpers ────────────────────────────────────────────────
 const normalize = (s: string) => s.trim().toLowerCase();

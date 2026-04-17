@@ -1,10 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { query } from "@/apis/request";
+import { request } from "@/apis/request";
 import { ImportFlow } from "@/components/imports";
 import { CsvUploader } from "@/components/imports/CsvUploader";
-import type { ImportConfig, ProcessedRow } from "@/types/importConfig";
-import locationApi from "@/types/location/locationApi";
-import organizationApi from "@/types/location/organizationApi";
 import {
   flattenLocationCsv,
   getParentPath,
@@ -13,7 +9,12 @@ import {
   toLocationCreatePayload,
   validateLocationRows,
 } from "@/components/pages/Location/utils";
-import { parseCsvText } from "@/utils/csv";
+import type { ImportConfig, ProcessedRow } from "@/internalTypes/importConfig";
+import locationApi from "@/types/location/locationApi";
+import organizationApi from "@/types/organization/organizationApi";
+import { parseCsvText } from "@/Utils/csv";
+import { mutate } from "@/Utils/request/mutate";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 interface LocationImportProps {
   facilityId?: string;
@@ -47,10 +48,9 @@ function createLocationImportConfig(
         ...toLocationCreatePayload(row),
         ...Object.assign({}, ...params),
       };
-      const created = await query(locationApi.create, {
+      const created = await mutate(locationApi.create, {
         pathParams: { facility_id: facilityId },
-        body: payload,
-      });
+      })(payload);
       if (!created?.id) {
         throw new Error(`Failed to create location: ${row.name}`);
       }
@@ -70,10 +70,9 @@ function createLocationImportConfig(
       if (orgIds.length > 0) {
         await Promise.all(
           orgIds.map((organization) =>
-            query(locationApi.addOrganization, {
+            mutate(locationApi.addOrganization, {
               pathParams: { facility_id: facilityId, location_id: created.id },
-              body: { organization },
-            }),
+            })({ organization }),
           ),
         );
       }
@@ -136,7 +135,7 @@ export default function LocationImport({ facilityId }: LocationImportProps) {
 
     const loadDepartments = async () => {
       try {
-        const response = await query(organizationApi.list, {
+        const response = await request(organizationApi.list, {
           pathParams: { facility_id: facilityId },
           queryParams: { limit: 500 },
         });

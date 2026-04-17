@@ -1,30 +1,11 @@
 import { z } from "zod";
-import { normalizeHeader, SlugSchema } from "../../../types/common";
-
-// ─── Enums ─────────────────────────────────────────────────────────
-export const ProductKnowledgeTypeSchema = z.enum([
-  "medication",
-  "consumable",
-  "nutritional_product",
-]);
-export type ProductKnowledgeType = z.infer<typeof ProductKnowledgeTypeSchema>;
-
-export const ProductKnowledgeStatusSchema = z.enum([
-  "draft",
-  "active",
-  "retired",
-]);
-export type ProductKnowledgeStatus = z.infer<
-  typeof ProductKnowledgeStatusSchema
->;
-
-export const ProductNameTypeSchema = z.enum([
-  "trade_name",
-  "alias",
-  "original_name",
-  "preferred",
-]);
-export type ProductNameType = z.infer<typeof ProductNameTypeSchema>;
+import { normalizeHeader, SlugSchema } from "@/internalTypes/common";
+import {
+  ProductKnowledgeStatus,
+  ProductKnowledgeCreate,
+  ProductKnowledgeType,
+  ProductNameTypes,
+} from "@/types/inventory/productKnowledge/productKnowledge";
 
 // ─── Code Systems ──────────────────────────────────────────────────
 export const SNOMED_SYSTEM = "http://snomed.info/sct";
@@ -86,11 +67,7 @@ export const ProductKnowledgeRowSchema = z.object({
   resourceCategory: z.string().min(1, "Resource category is required"),
   slug: SlugSchema,
   name: z.string().min(1, "Name is required"),
-  productType: z
-    .string()
-    .min(1, "Product type is required")
-    .transform((val) => val.toLowerCase().trim())
-    .pipe(ProductKnowledgeTypeSchema),
+  productType: z.nativeEnum(ProductKnowledgeType),
   baseUnitDisplay: z
     .string()
     .min(1, "Base unit is required")
@@ -112,13 +89,7 @@ export const ProductKnowledgeRowSchema = z.object({
   routeCode: z.string().optional(),
   routeDisplay: z.string().optional(),
   alternateIdentifier: z.string().optional(),
-  alternateNameType: z
-    .string()
-    .optional()
-    .transform((val) =>
-      val?.trim() ? val.toLowerCase().replace(/\s+/g, "_") : undefined,
-    )
-    .pipe(ProductNameTypeSchema.optional()),
+  alternateNameType: z.nativeEnum(ProductNameTypes).optional(),
   alternateNameValue: z.string().optional(),
 });
 
@@ -145,41 +116,19 @@ function resolveBaseUnit(display: string) {
 }
 
 // ─── API Payload Transformer ───────────────────────────────────────
-export interface ProductKnowledgeCreatePayload {
-  slug_value: string;
-  name: string;
-  facility: string;
-  product_type: ProductKnowledgeType;
-  status: ProductKnowledgeStatus;
-  base_unit: { system: string; code: string; display: string };
-  category: string;
-  names: { name_type: ProductNameType; name: string }[];
-  storage_guidelines: unknown[];
-  is_instance_level: boolean;
-  code?: { system: string; code: string; display: string };
-  definitional?: {
-    dosage_form?: { system: string; code: string; display: string };
-    intended_routes: { system: string; code: string; display: string }[];
-    ingredients: unknown[];
-    nutrients: unknown[];
-    drug_characteristic: unknown[];
-  };
-  alternate_identifier?: string;
-}
-
 export function toProductKnowledgeCreatePayload(
   row: ProductKnowledgeRow,
   facilityId: string,
   categorySlug: string,
-): ProductKnowledgeCreatePayload {
+): ProductKnowledgeCreate {
   const baseUnit = resolveBaseUnit(row.baseUnitDisplay);
 
-  const payload: ProductKnowledgeCreatePayload = {
+  const payload: ProductKnowledgeCreate = {
     slug_value: row.slug,
     name: row.name.trim(),
     facility: facilityId,
-    product_type: row.productType,
-    status: "active",
+    product_type: row.productType as ProductKnowledgeType,
+    status: ProductKnowledgeStatus.active,
     base_unit: baseUnit,
     category: categorySlug,
     names: [],
@@ -204,7 +153,7 @@ export function toProductKnowledgeCreatePayload(
   const routeCodes = parseCsvList(row.routeCode || "");
   const routeDisplays = parseCsvList(row.routeDisplay || "");
 
-  if (dosageFormCode || routeCodes.length > 0) {
+  if (dosageFormCode) {
     const intendedRoutes = routeCodes.map((code, index) => ({
       system: SNOMED_SYSTEM,
       code,
@@ -212,19 +161,16 @@ export function toProductKnowledgeCreatePayload(
     }));
 
     payload.definitional = {
+      dosage_form: {
+        system: SNOMED_SYSTEM,
+        code: dosageFormCode,
+        display: dosageFormDisplay || dosageFormCode,
+      },
       intended_routes: intendedRoutes,
       ingredients: [],
       nutrients: [],
       drug_characteristic: [],
     };
-
-    if (dosageFormCode) {
-      payload.definitional.dosage_form = {
-        system: SNOMED_SYSTEM,
-        code: dosageFormCode,
-        display: dosageFormDisplay || dosageFormCode,
-      };
-    }
   }
 
   // Alternate identifier

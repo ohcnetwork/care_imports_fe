@@ -1,8 +1,18 @@
-import { useState, useMemo, useCallback } from "react";
 import { Database } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 
-import { APIError, apis } from "@/apis";
+import { HttpError, request } from "@/apis/request";
 import { ImportFlow } from "@/components/imports";
+import {
+  PK_HEADER_MAP,
+  PK_REQUIRED_HEADERS,
+  PK_SAMPLE_CSV,
+  ProductKnowledgeRowSchema,
+  parseProductKnowledgeRow,
+  toProductKnowledgeCreatePayload,
+  validateProductKnowledgeRows,
+  type ProductKnowledgeRow,
+} from "@/components/pages/ProductKnowledge/utils";
 import MasterDataFileSelector from "@/components/shared/MasterDataFileSelector";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,20 +24,12 @@ import {
 } from "@/components/ui/card";
 import { disableOverride } from "@/config";
 import { useMasterDataAvailability } from "@/hooks/useMasterDataAvailability";
-import type { ImportConfig, ProcessedRow } from "@/types/importConfig";
+import type { ImportConfig, ProcessedRow } from "@/internalTypes/importConfig";
 import { ResourceCategoryResourceType } from "@/types/base/resourceCategory/resourceCategory";
-import {
-  PK_HEADER_MAP,
-  PK_REQUIRED_HEADERS,
-  PK_SAMPLE_CSV,
-  ProductKnowledgeRowSchema,
-  parseProductKnowledgeRow,
-  toProductKnowledgeCreatePayload,
-  validateProductKnowledgeRows,
-  type ProductKnowledgeRow,
-} from "@/components/pages/ProductKnowledge/utils";
-import { parseCsvToProcessedRows } from "@/utils/csv";
-import { upsertResourceCategories } from "@/utils/resourceCategory";
+import productKnowledgeApi from "@/types/inventory/productKnowledge/productKnowledgeApi";
+import { parseCsvToProcessedRows } from "@/Utils/csv";
+import { mutate } from "@/Utils/request/mutate";
+import { upsertResourceCategories } from "@/Utils/resourceCategory";
 
 interface ProductKnowledgeImportNewProps {
   facilityId?: string;
@@ -88,10 +90,15 @@ export default function ProductKnowledgeImportNew({
         if (!facilityId) return undefined;
         const pkSlug = `f-${facilityId}-${row.slug}`;
         try {
-          const existing = await apis.productKnowledge.get(pkSlug);
+          const existing = await request(
+            productKnowledgeApi.retrieveProductKnowledge,
+            {
+              pathParams: { slug: pkSlug },
+            },
+          );
           return (existing as { id?: string }).id;
         } catch (error) {
-          if (error instanceof APIError && error.status === 404) {
+          if (error instanceof HttpError && error.status === 404) {
             return undefined;
           }
           throw error;
@@ -119,10 +126,7 @@ export default function ProductKnowledgeImportNew({
           facilityId,
           categorySlug,
         );
-
-        return await apis.productKnowledge.create(
-          payload as unknown as Record<string, unknown>,
-        );
+        return mutate(productKnowledgeApi.createProductKnowledge)(payload);
       },
 
       updateResource: async (_id, row) => {
@@ -148,10 +152,9 @@ export default function ProductKnowledgeImportNew({
         );
 
         const pkSlug = `f-${facilityId}-${row.slug}`;
-        await apis.productKnowledge.update(
-          pkSlug,
-          payload as unknown as Record<string, unknown>,
-        );
+        await mutate(productKnowledgeApi.updateProductKnowledge, {
+          pathParams: { slug: pkSlug },
+        })(payload);
       },
 
       invalidateKeys: [["product-knowledge"]],

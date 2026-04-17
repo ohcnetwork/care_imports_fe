@@ -1,28 +1,29 @@
-import { APIError, query } from "@/apis/request";
+import { HttpError, request } from "@/apis/request";
 import { ImportFlow } from "@/components/imports";
-import type { ImportConfig, ImportParams } from "@/types/importConfig";
 import {
+  parseUserRow,
   toUserCreatePayload,
   USER_HEADER_MAP,
   USER_REQUIRED_HEADERS,
   USER_SAMPLE_CSV,
   UserRow,
   UserRowSchema,
-  parseUserRow,
 } from "@/components/pages/Users/utils";
+import type { ImportConfig, ImportParams } from "@/internalTypes/importConfig";
 import userApi from "@/types/user/userApi";
+import { mutate } from "@/Utils/request/mutate";
 
 /**
  * Check if a user already exists by username.
  */
 async function checkUserExists(row: UserRow): Promise<string | undefined> {
   try {
-    const user = await query(userApi.get, {
+    const user = await request(userApi.get, {
       pathParams: { username: row.username },
     });
     return user.id;
   } catch (error) {
-    if (error instanceof APIError && error.status === 404) {
+    if (error instanceof HttpError && error.status === 404) {
       return undefined;
     }
     throw error;
@@ -34,7 +35,7 @@ async function checkUserExists(row: UserRow): Promise<string | undefined> {
  */
 async function createUser(row: UserRow, _params: ImportParams): Promise<void> {
   const payload = toUserCreatePayload(row);
-  await query(userApi.create, { body: payload });
+  await mutate(userApi.create)(payload);
 }
 
 /**

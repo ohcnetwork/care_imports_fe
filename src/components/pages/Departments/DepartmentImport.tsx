@@ -1,9 +1,7 @@
 import { useMemo } from "react";
 
-import { query } from "@/apis/request";
+import { mutate } from "@/Utils/request/mutate";
 import { ImportFlow } from "@/components/imports";
-import type { ImportConfig } from "@/types/importConfig";
-import organizationApi from "@/types/location/organizationApi";
 import {
   DEPARTMENT_HEADER_MAP,
   DEPARTMENT_REQUIRED_HEADERS,
@@ -14,6 +12,8 @@ import {
   toDepartmentCreatePayload,
   validateDepartmentRows,
 } from "@/components/pages/Departments/utils";
+import type { ImportConfig } from "@/internalTypes/importConfig";
+import organizationApi from "@/types/organization/organizationApi";
 
 interface DepartmentImportProps {
   facilityId?: string;
@@ -41,10 +41,9 @@ function createDepartmentImportConfig(
         ...toDepartmentCreatePayload(row, facilityId),
         ...Object.assign({}, ...params),
       };
-      const created = await query(organizationApi.create, {
+      const created = await mutate(organizationApi.create, {
         pathParams: { facility_id: facilityId },
-        body: payload,
-      });
+      })(payload);
       if (!created?.id) {
         throw new Error(`Failed to create department: ${row.name}`);
       }

@@ -1,9 +1,20 @@
 import { AlertCircle, Download, Loader2, Upload } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { apis } from "@/apis";
+import { request } from "@/apis/request";
 import { ImportFlow } from "@/components/imports";
 import { LocationTreePicker } from "@/components/LocationTreePicker";
+import {
+  PRODUCT_HEADER_MAP,
+  PRODUCT_REQUIRED_HEADERS,
+  PRODUCT_SAMPLE_CSV,
+  ProductRow,
+  ProductRowSchema,
+  parseProductRow,
+  toChargeItemPayload,
+  toProductKnowledgePayload,
+  toProductPayload,
+} from "@/components/pages/Product/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,23 +31,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { ImportConfig } from "@/types/importConfig";
+import type { ImportResults } from "@/internalTypes/common";
+import type { ImportConfig } from "@/internalTypes/importConfig";
 import { ResourceCategoryResourceType } from "@/types/base/resourceCategory/resourceCategory";
-import type { ImportResults } from "@/types/common";
+import chargeItemDefinitionApi from "@/types/billing/chargeItemDefinition/chargeItemDefinitionApi";
+import { DeliveryOrderStatus } from "@/types/inventory/deliveryOrder/deliveryOrder";
+import deliveryOrderApi from "@/types/inventory/deliveryOrder/deliveryOrderApi";
+import productApi from "@/types/inventory/product/productApi";
+import productKnowledgeApi from "@/types/inventory/productKnowledge/productKnowledgeApi";
 import {
-  PRODUCT_HEADER_MAP,
-  PRODUCT_REQUIRED_HEADERS,
-  PRODUCT_SAMPLE_CSV,
-  ProductRow,
-  ProductRowSchema,
-  parseProductRow,
-  toChargeItemPayload,
-  toProductKnowledgePayload,
-  toProductPayload,
-} from "@/components/pages/Product/utils";
-import { upsertResourceCategories } from "@/utils/resourceCategory";
-import { createSlug } from "@/utils/slug";
-import { downloadCsv } from "@/utils/csv";
+  SupplyDeliveryCondition,
+  SupplyDeliveryStatus,
+  SupplyDeliveryType,
+} from "@/types/inventory/supplyDelivery/supplyDelivery";
+import supplyDeliveryApi from "@/types/inventory/supplyDelivery/supplyDeliveryApi";
+import organizationApi from "@/types/organization/organizationApi";
+import { downloadCsv } from "@/Utils/csv";
+import { mutate } from "@/Utils/request/mutate";
+import { upsertResourceCategories } from "@/Utils/resourceCategory";
+import { createSlug } from "@/Utils/slug";
 
 interface ProductImportProps {
   facilityId?: string;
@@ -86,9 +99,9 @@ export default function ProductImport({ facilityId }: ProductImportProps) {
     const loadSuppliers = async () => {
       setIsLoadingSuppliers(true);
       try {
-        const response = await apis.organization.list({
-          org_type: "product_supplier",
-          limit: 200,
+        const response = await request(organizationApi.list, {
+          pathParams: { facility_id: facilityId },
+          queryParams: { limit: 500, org_type: "product_supplier" },
         });
         setSuppliers(response.results.map((s) => ({ id: s.id, name: s.name })));
       } catch {
@@ -335,11 +348,17 @@ function createProductImportConfig(
 
         // Check if PK already exists
         try {
-          const response = await apis.productKnowledge.list({
-            facility: facilityId,
-            name: pkName,
-            limit: 10,
-          });
+          const response = await request(
+            productKnowledgeApi.listProductKnowledge,
+            {
+              pathParams: { facility: facilityId },
+              queryParams: {
+                limit: 10,
+                org_type: "product_supplier",
+                name: pkName,
+              },
+            },
+          );
           const match = response.results.find(
             (item: { name: string; slug: string }) =>
               normalizeName(item.name) === normalizeName(pkName),
@@ -363,9 +382,10 @@ function createProductImportConfig(
             categorySlug,
             facilityId,
           );
-          const pkResponse = await apis.productKnowledge.create(
-            payload as unknown as Record<string, unknown>,
-          );
+          const pkResponse = await mutate(
+            productKnowledgeApi.createProductKnowledge,
+            {},
+          )(payload);
           productKnowledgeSlug = pkResponse.slug;
         }
       }
@@ -380,9 +400,12 @@ function createProductImportConfig(
         const cidName = row.charge_item_definition_name?.trim() || row.name;
 
         try {
-          const response = await apis.facility.chargeItemDefinition.list(
-            facilityId,
-            { title: cidName, limit: 10 },
+          const response = await request(
+            chargeItemDefinitionApi.listChargeItemDefinition,
+            {
+              pathParams: { facilityId: facilityId },
+              queryParams: { title: cidName, limit: 10 },
+            },
           );
           const match = response.results.find(
             (item: { title: string; slug: string }) =>
@@ -402,10 +425,12 @@ function createProductImportConfig(
             cidCategoryMap.get(normalizeName(categoryName)) ?? "";
 
           const payload = toChargeItemPayload(row, slugValue, categorySlug);
-          const cidResponse = await apis.facility.chargeItemDefinition.create(
-            facilityId,
-            payload as unknown as Record<string, unknown>,
-          );
+          const cidResponse = await mutate(
+            chargeItemDefinitionApi.createChargeItemDefinition,
+            {
+              pathParams: { facilityId },
+            },
+          )(payload);
           chargeItemSlug = cidResponse.slug;
         }
       }
@@ -424,10 +449,9 @@ function createProductImportConfig(
         row,
       );
 
-      const productResponse = (await apis.facility.product.create(
-        facilityId,
-        payload,
-      )) as { id: string };
+      const productResponse = await mutate(productApi.createProduct, {
+        pathParams: { facilityId },
+      })(payload);
 
       return { id: productResponse.id, row };
     },
@@ -456,29 +480,36 @@ function createProductImportConfig(
 
         try {
           // Create delivery order for batch
-          const deliveryOrder = await apis.facility.deliveryOrder.create(
-            facilityId,
+          const deliveryOrder = await mutate(
+            deliveryOrderApi.createDeliveryOrder,
             {
-              name: `Product Import Batch ${batchNumber} — ${today}`,
-              status: "pending",
-              destination: locationId,
-              supplier: supplierId,
-              note: "Automated delivery order from product import",
+              pathParams: { facilityId },
             },
-          );
+          )({
+            name: `Product Import Batch ${batchNumber} — ${today}`,
+            status: DeliveryOrderStatus.pending,
+            destination: locationId,
+            supplier: supplierId,
+            note: "Automated delivery order from product import",
+            extensions: {},
+          });
 
           // Create supply deliveries for each item
           for (const item of batch) {
             try {
-              await apis.supplyDelivery.create({
-                status: "completed",
-                supplied_item_type: "product",
+              const payload = {
+                status: SupplyDeliveryStatus.completed,
+                supplied_item_type: SupplyDeliveryType.product,
                 supplied_item: item.id,
-                supplied_item_quantity: item.row.inventoryQuantity,
-                supplied_item_condition: "normal",
+                supplied_item_quantity: item.row.inventoryQuantity.toString(),
+                supplied_item_condition: SupplyDeliveryCondition.normal,
                 destination: locationId,
                 order: deliveryOrder.id,
-              });
+              };
+
+              await mutate(supplyDeliveryApi.createSupplyDelivery)(
+                payload as any,
+              );
             } catch {
               console.error(
                 `Failed to create supply delivery for product ${item.row.name}`,
@@ -488,16 +519,15 @@ function createProductImportConfig(
 
           // Mark delivery order as completed
           try {
-            await apis.facility.deliveryOrder.update(
-              facilityId,
-              deliveryOrder.id,
-              {
-                name: `Product Import Batch ${batchNumber} — ${today}`,
-                status: "completed",
-                destination: locationId,
-                note: "Completed via product import",
-              },
-            );
+            await mutate(deliveryOrderApi.updateDeliveryOrder, {
+              pathParams: { facilityId, deliveryOrderId: deliveryOrder.id },
+            })({
+              id: deliveryOrder.id,
+              name: `Product Import Batch ${batchNumber} — ${today}`,
+              status: DeliveryOrderStatus.completed,
+              destination: locationId,
+              note: "Completed via product import",
+            });
           } catch {
             // Non-critical
           }

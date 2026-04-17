@@ -2,8 +2,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Download, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo } from "react";
 
-import { apis } from "@/apis";
-import type { PaginatedResponse } from "@/apis/types";
+import { request } from "@/apis/request";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,67 +13,21 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import type { ObservationDefinitionReadSpec } from "@/types/emr/observationDefinition/observationDefinition";
+import observationDefinitionApi from "@/types/emr/observationDefinition/observationDefinitionApi";
 import {
   csvEscape,
   downloadCsv,
   stripFacilitySlugPrefix,
   toCsvString,
-} from "@/utils/export";
+} from "@/Utils/export";
 import {
   COMPONENT_CSV_HEADERS,
   OBSERVATION_DEFINITION_CSV_HEADERS,
-} from "@/utils/observationDefinitionConstants";
+} from "@/Utils/observationDefinitionConstants";
 
 interface ObservationDefinitionExportProps {
   facilityId?: string;
-}
-
-interface CodePayload {
-  system?: string;
-  code?: string;
-  display?: string;
-}
-
-interface Condition {
-  metric: string;
-  operation?: string;
-  value: unknown;
-}
-
-interface RangeBand {
-  interpretation?: { display?: string };
-  min?: string | number;
-  max?: string | number;
-}
-
-interface QualifiedRange {
-  conditions?: Condition[];
-  ranges?: RangeBand[];
-}
-
-interface ComponentPayload {
-  code?: CodePayload;
-  permitted_data_type?: string;
-  permitted_unit?: CodePayload | null;
-  qualified_ranges?: QualifiedRange[];
-}
-
-interface ObservationDefinitionRead {
-  id: string;
-  title: string;
-  slug: string;
-  slug_config?: { slug_value: string };
-  description?: string;
-  category?: string;
-  status?: string;
-  code?: CodePayload;
-  permitted_data_type?: string;
-  body_site?: CodePayload | null;
-  method?: CodePayload | null;
-  permitted_unit?: CodePayload | null;
-  derived_from_uri?: string;
-  component?: ComponentPayload[];
-  qualified_ranges?: QualifiedRange[];
 }
 
 const PAGE_SIZE = 100;
@@ -83,7 +36,9 @@ const PAGE_SIZE = 100;
  * Build the definitions CSV rows — one row per observation definition,
  * matching OBSERVATION_DEFINITION_CSV_HEADERS.
  */
-function buildDefinitionRows(items: ObservationDefinitionRead[]): string[][] {
+function buildDefinitionRows(
+  items: ObservationDefinitionReadSpec[],
+): string[][] {
   return items.map((item) => {
     const slug = stripFacilitySlugPrefix(
       item.slug_config?.slug_value ?? item.slug ?? "",
@@ -116,7 +71,9 @@ function buildDefinitionRows(items: ObservationDefinitionRead[]): string[][] {
  * Build the components CSV rows — one row per component × qualified_range × range band,
  * matching COMPONENT_CSV_HEADERS.
  */
-function buildComponentRows(items: ObservationDefinitionRead[]): string[][] {
+function buildComponentRows(
+  items: ObservationDefinitionReadSpec[],
+): string[][] {
   const rows: string[][] = [];
 
   for (const item of items) {
@@ -126,8 +83,8 @@ function buildComponentRows(items: ObservationDefinitionRead[]): string[][] {
 
     const components = item.component ?? [];
     for (const comp of components) {
-      const compCode = comp.code ?? {};
-      const compUnit = comp.permitted_unit ?? {};
+      const compCode = comp.code;
+      const compUnit = comp.permitted_unit;
       const qualifiedRanges = comp.qualified_ranges ?? [];
 
       if (qualifiedRanges.length === 0) {
@@ -244,11 +201,10 @@ function ObservationDefinitionExportInner({
   } = useInfiniteQuery({
     queryKey: ["export", "observation-definition", facilityId],
     queryFn: async ({ pageParam = 0 }) => {
-      return (await apis.observationDefinition.list({
-        facility: facilityId,
-        limit: PAGE_SIZE,
-        offset: pageParam,
-      })) as unknown as PaginatedResponse<ObservationDefinitionRead>;
+      return await request(observationDefinitionApi.listObservationDefinition, {
+        pathParams: { facilityId },
+        queryParams: { limit: PAGE_SIZE, offset: pageParam },
+      });
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {

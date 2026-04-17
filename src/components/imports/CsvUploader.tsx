@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { downloadCsv } from "@/utils/csv";
+import { downloadCsv } from "@/Utils/csv";
 import { AlertCircle, Download, Upload } from "lucide-react";
 import { useCallback, useId, useRef } from "react";
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { normalizeHeader } from "../../../types/common";
+import { normalizeHeader } from "@/internalTypes/common";
 
 // ─── Shared Helpers ────────────────────────────────────────────────
 const normalize = (s: string) => s.trim().toLowerCase();

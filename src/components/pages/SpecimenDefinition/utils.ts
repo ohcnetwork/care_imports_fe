@@ -1,25 +1,51 @@
 import { z } from "zod";
 
-import type { ProcessedRow, ReviewColumn } from "@/types/importConfig";
+import type { ProcessedRow, ReviewColumn } from "@/internalTypes/importConfig";
 import {
   ContainerSpec,
+  DurationSpec,
   Preference,
   SpecimenDefinitionCreate,
   SpecimenDefinitionStatus,
   TypeTestedSpec,
-  type CodeReference,
-  type SpecimenRow,
 } from "@/types/emr/specimenDefinition/specimenDefinition";
-import { parseSpecimenDefinitionCsv } from "@/utils/masterImport/specimenDefinition";
+import { parseSpecimenDefinitionCsv } from "@/Utils/masterImport/specimenDefinition";
 
-import { CodeSchema, normalizeHeader, zodDecimal } from "../../../types/common";
-import { query } from "@/utils/api";
+import {
+  CodeSchema,
+  normalizeHeader,
+  zodDecimal,
+} from "@/internalTypes/common";
 import valueSetApi from "../../../types/valueset/valueSetApi";
+import { Code } from "@/types/base/code/code";
+import { request } from "@/apis/request";
 
-export type {
-  CodeReference,
-  SpecimenRow,
-} from "@/types/emr/specimenDefinition/specimenDefinition";
+export interface SpecimenDefinitionImportProps {
+  facilityId?: string;
+}
+
+export interface SpecimenRow {
+  title: string;
+  slug_value?: string;
+  status: SpecimenDefinitionStatus;
+  description: string;
+  derived_from_uri?: string;
+  type_collected: Code;
+  patient_preparation: Code[];
+  collection: Code | null;
+  is_derived?: boolean;
+  preference?: Preference;
+  single_use?: boolean;
+  requirement?: string;
+  retention_time?: DurationSpec | null;
+  container?: ContainerSpec | null;
+}
+
+export interface CodeReference {
+  signature: string;
+  label: string;
+  code: Code;
+}
 
 // ─── Zod Schemas ──────────────────────────────────────────────────
 
@@ -158,7 +184,7 @@ export async function validateSpecimenDefinitionMasterRows(
     await Promise.all(
       Array.from(uniqueRefs.values()).map(async (ref) => {
         try {
-          await query(valueSetApi.lookupCode, {
+          await request(valueSetApi.lookup, {
             body: { system: ref.code.system, code: ref.code.code },
           });
         } catch {
@@ -595,7 +621,7 @@ export async function validateSpecimenDefinitionRows(
   await Promise.all(
     Array.from(uniqueCodes.entries()).map(async ([sig, body]) => {
       try {
-        await query(valueSetApi.lookupCode, { body });
+        await request(valueSetApi.lookup, { body });
       } catch {
         invalidCodes.add(sig);
       }

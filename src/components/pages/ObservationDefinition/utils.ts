@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { parseCsvText } from "@/utils/csv";
-import { parseComponentCsv } from "@/utils/masterImport/observationDefinition";
+import { parseCsvText } from "@/Utils/csv";
+import { parseComponentCsv } from "@/Utils/masterImport/observationDefinition";
 import type { QualifiedRange } from "@/types/base/qualifiedRange/qualifiedRange";
-import type { ProcessedRow, ReviewColumn } from "@/types/importConfig";
+import type { ProcessedRow, ReviewColumn } from "@/internalTypes/importConfig";
 import type {
   ObservationDefinitionComponentCreateSpec,
   ObservationDefinitionCreateSpec,
@@ -12,7 +12,7 @@ import {
   QuestionType,
   OBSERVATION_DEFINITION_CATEGORY,
 } from "@/types/emr/observationDefinition/observationDefinition";
-import { SlugSchema, normalizeHeader } from "../../../types/common";
+import { SlugSchema, normalizeHeader } from "@/internalTypes/common";
 
 // ─── Headers ───────────────────────────────────────────────────────
 export const OBS_DEF_REQUIRED_HEADERS = [

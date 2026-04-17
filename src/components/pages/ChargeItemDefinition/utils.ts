@@ -3,7 +3,8 @@ import { z } from "zod";
 import type { ChargeItemDefinitionCreate } from "@/types/billing/chargeItemDefinition/chargeItemDefinition";
 import { ChargeItemDefinitionStatus } from "@/types/billing/chargeItemDefinition/chargeItemDefinition";
 
-import { normalizeHeader } from "../../../types/common";
+import { normalizeHeader } from "@/internalTypes/common";
+import { MonetaryComponentType } from "@/types/base/monetaryComponent/monetaryComponent";
 
 // ─── Required Headers ──────────────────────────────────────────────
 export const CHARGE_ITEM_REQUIRED_HEADERS = [
@@ -98,7 +99,7 @@ export function toChargeItemCreatePayload(
     discount_configuration: null,
     price_components: [
       {
-        monetary_component_type: "base",
+        monetary_component_type: MonetaryComponentType.base,
         amount: row.price.trim(),
       },
     ],

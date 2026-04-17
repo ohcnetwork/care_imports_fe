@@ -1,28 +1,33 @@
-import { apis } from "@/apis";
+import { request } from "@/apis/request";
+import type { ProcessedRow } from "@/internalTypes/importConfig";
 import { ResourceCategoryResourceType } from "@/types/base/resourceCategory/resourceCategory";
 import {
-  ActivityDefinitionClassification,
   ActivityDefinitionCreateSpec,
-  ActivityDefinitionKind,
-  ActivityDefinitionProcessedRow,
-  ActivityDefinitionStatus,
   ActivityDefinitionUpdateSpec,
+  Classification,
+  Kind,
+  Status,
 } from "@/types/emr/activityDefinition/activityDefinition";
-import type { ProcessedRow } from "@/types/importConfig";
 import {
+  ActivityDefinitionProcessedRow,
   type HealthcareServiceOption,
   type ResolvedRow,
   stripMappingErrors,
-} from "@/utils/activityDefinitionHelper";
-import { normalizeName } from "@/utils/importHelpers";
-import { parseActivityDefinitionCsv } from "@/utils/masterImport/activityDefinition";
-import { upsertResourceCategories } from "@/utils/resourceCategory";
+} from "@/Utils/activityDefinitionHelper";
+import { normalizeName } from "@/Utils/importHelpers";
+import { parseActivityDefinitionCsv } from "@/Utils/masterImport/activityDefinition";
+import { upsertResourceCategories } from "@/Utils/resourceCategory";
 import { z } from "zod";
 
+import type { ReviewColumn } from "@/internalTypes/importConfig";
 import type { Code } from "@/types/base/code/code";
-import type { ReviewColumn } from "@/types/importConfig";
 
-import { normalizeHeader } from "../../../types/common";
+import { normalizeHeader } from "@/internalTypes/common";
+import chargeItemDefinitionApi from "@/types/billing/chargeItemDefinition/chargeItemDefinitionApi";
+import observationDefinitionApi from "@/types/emr/observationDefinition/observationDefinitionApi";
+import specimenDefinitionApi from "@/types/emr/specimenDefinition/specimenDefinitionApi";
+import healthcareServiceApi from "@/types/healthcareService/healthcareServiceApi";
+import locationApi from "@/types/location/locationApi";
 
 // ─── Row Type ─────────────────────────────────────────────────────
 
@@ -109,9 +114,9 @@ export const ActivityDefinitionCsvRowSchema = z.object({
     ),
   description: z.string().min(1, "Description is required"),
   usage: z.string().min(1, "Usage is required"),
-  status: z.nativeEnum(ActivityDefinitionStatus),
-  classification: z.nativeEnum(ActivityDefinitionClassification),
-  kind: z.nativeEnum(ActivityDefinitionKind),
+  status: z.nativeEnum(Status),
+  classification: z.nativeEnum(Classification),
+  kind: z.nativeEnum(Kind),
   code: CodeSchema,
   body_site: CodeSchema.nullable(),
   diagnostic_report_codes: z.array(CodeSchema),
@@ -298,10 +303,9 @@ export async function validateActivityDefinitionCsvRowsAsync(
     // Check specimen slugs
     ...Array.from(allSpecimenSlugs).map(async (slug) => {
       try {
-        await apis.facility.specimenDefinition.get(
-          facilityId,
-          `f-${facilityId}-${slug}`,
-        );
+        await request(specimenDefinitionApi.retrieveSpecimenDefinition, {
+          pathParams: { facilityId, slug: `f-${facilityId}-${slug}` },
+        });
         specimenResults.set(slug, true);
       } catch {
         specimenResults.set(slug, false);
@@ -311,10 +315,9 @@ export async function validateActivityDefinitionCsvRowsAsync(
     // Check observation slugs
     ...Array.from(allObservationSlugs).map(async (slug) => {
       try {
-        await apis.facility.observationDefinition.get(
-          `f-${facilityId}-${slug}`,
-          { facility: facilityId },
-        );
+        await request(observationDefinitionApi.retrieveObservationDefinition, {
+          pathParams: { observationSlug: `f-${facilityId}-${slug}` },
+        });
         observationResults.set(slug, true);
       } catch {
         observationResults.set(slug, false);
@@ -325,9 +328,12 @@ export async function validateActivityDefinitionCsvRowsAsync(
     (async () => {
       if (allChargeItemSlugs.size === 0) return;
       try {
-        const response = await apis.facility.chargeItemDefinition.list(
-          facilityId,
-          { limit: 500 },
+        const response = await request(
+          chargeItemDefinitionApi.listChargeItemDefinition,
+          {
+            pathParams: { facilityId },
+            queryParams: { limit: 500 },
+          },
         );
         const existingSlugs = new Set(
           response.results.map((item) => item.slug),
@@ -350,8 +356,9 @@ export async function validateActivityDefinitionCsvRowsAsync(
     (async () => {
       if (allLocationNames.size === 0) return;
       try {
-        const response = await apis.facility.location.list(facilityId, {
-          limit: 500,
+        const response = await request(locationApi.list, {
+          pathParams: { facilityId },
+          queryParams: { limit: 500 },
         });
         const locationsByName = new Map(
           response.results.map((loc) => [normalizeName(loc.name), loc]),
@@ -374,9 +381,12 @@ export async function validateActivityDefinitionCsvRowsAsync(
     (async () => {
       if (allHealthcareServiceNames.size === 0) return;
       try {
-        const response = await apis.facility.healthcareService.list(
-          facilityId,
-          { limit: 200 },
+        const response = await request(
+          healthcareServiceApi.listHealthcareService,
+          {
+            pathParams: { facilityId },
+            queryParams: { limit: 200 },
+          },
         );
         const servicesByName = new Map(
           response.results.map((svc) => [normalizeName(svc.name), svc]),
@@ -569,13 +579,17 @@ export async function resolveReferences(
   const categoryNames: string[] = [];
 
   rows.forEach((row) => {
-    row.data.specimen_slugs.forEach((slug) => uniqueSpecimenSlugs.add(slug));
-    row.data.observation_slugs.forEach((slug) =>
+    row.data.specimen_slugs.forEach((slug: string) =>
+      uniqueSpecimenSlugs.add(slug),
+    );
+    row.data.observation_slugs.forEach((slug: string) =>
       uniqueObservationSlugs.add(slug),
     );
     const title = row.data.title.trim();
     if (title) uniqueActivityTitles.add(title);
-    row.data.location_names.forEach((name) => uniqueLocations.add(name));
+    row.data.location_names.forEach((name: string) =>
+      uniqueLocations.add(name),
+    );
     if (row.data.category_name.trim()) {
       categoryNames.push(row.data.category_name);
     }
@@ -588,10 +602,9 @@ export async function resolveReferences(
       Promise.all(
         Array.from(uniqueSpecimenSlugs).map(async (slug) => {
           try {
-            await apis.facility.specimenDefinition.get(
-              facilityId,
-              `f-${facilityId}-${slug}`,
-            );
+            await request(specimenDefinitionApi.retrieveSpecimenDefinition, {
+              pathParams: { facilityId, slug: `f-${facilityId}-${slug}` },
+            });
             validSpecimenSlugs.add(slug);
           } catch {
             // will surface as error on rows below
@@ -603,8 +616,11 @@ export async function resolveReferences(
       Promise.all(
         Array.from(uniqueObservationSlugs).map(async (slug) => {
           try {
-            await apis.facility.observationDefinition.get(
-              `f-${facilityId}-${slug}`,
+            await request(
+              observationDefinitionApi.retrieveObservationDefinition,
+              {
+                pathParams: { observationSlug: `f-${facilityId}-${slug}` },
+              },
             );
             validObservationSlugs.add(slug);
           } catch {
@@ -617,9 +633,12 @@ export async function resolveReferences(
       Promise.all(
         Array.from(uniqueActivityTitles).map(async (title) => {
           try {
-            const response = await apis.facility.chargeItemDefinition.list(
-              facilityId,
-              { title, limit: 10 },
+            const response = await request(
+              chargeItemDefinitionApi.listChargeItemDefinition,
+              {
+                pathParams: { facilityId },
+                queryParams: { title, limit: 10 },
+              },
             );
             const match = response.results.find(
               (item) => normalizeName(item.title) === normalizeName(title),
@@ -637,9 +656,9 @@ export async function resolveReferences(
       Promise.all(
         Array.from(uniqueLocations).map(async (name) => {
           try {
-            const response = await apis.facility.location.list(facilityId, {
-              name,
-              limit: 50,
+            const response = await request(locationApi.list, {
+              pathParams: { facilityId },
+              queryParams: { name, limit: 50 },
             });
             const match = response.results.find(
               (item) => normalizeName(item.name) === normalizeName(name),
@@ -654,9 +673,10 @@ export async function resolveReferences(
       ),
 
       // Healthcare services (fetch list for mapping UI)
-      apis.facility.healthcareService
-        .list(facilityId, { limit: 200 })
-        .catch(() => ({ results: [] })),
+      request(healthcareServiceApi.listHealthcareService, {
+        pathParams: { facilityId },
+        queryParams: { limit: 200 },
+      }).catch(() => ({ results: [] })),
 
       // Resource categories — single batch upsert
       upsertResourceCategories({
@@ -684,7 +704,7 @@ export async function resolveReferences(
       healthcareServiceId: null,
     };
 
-    row.data.specimen_slugs.forEach((slug) => {
+    row.data.specimen_slugs.forEach((slug: string) => {
       if (validSpecimenSlugs.has(slug)) {
         resolved.specimenSlugs.push(slug);
       } else {
@@ -692,7 +712,7 @@ export async function resolveReferences(
       }
     });
 
-    row.data.observation_slugs.forEach((slug) => {
+    row.data.observation_slugs.forEach((slug: string) => {
       if (validObservationSlugs.has(slug)) {
         resolved.observationSlugs.push(slug);
       } else {
@@ -700,7 +720,7 @@ export async function resolveReferences(
       }
     });
 
-    row.data.location_names.forEach((name) => {
+    row.data.location_names.forEach((name: string) => {
       const id = locationMap[normalizeName(name)];
       if (id) {
         resolved.locationIds.push(id);
@@ -785,24 +805,24 @@ export function toActivityDefinitionDatapoint(
   const payload: ActivityDefinitionCreateSpec = {
     slug_value: row.slug_value,
     title: row.title,
-    status: row.status as ActivityDefinitionStatus,
+    status: row.status as Status,
     description: row.description,
     usage: row.usage,
-    classification: row.classification as ActivityDefinitionClassification,
-    kind: row.kind as ActivityDefinitionKind,
+    classification: row.classification as Classification,
+    kind: row.kind as Kind,
     code: row.code,
     body_site: row.body_site,
     diagnostic_report_codes: row.diagnostic_report_codes,
     derived_from_uri: row.derived_from_uri || null,
     facility: facilityId,
     specimen_requirements: (resolved?.specimenSlugs ?? []).map(
-      (s) => `f-${facilityId}-${s}`,
+      (s: string) => `f-${facilityId}-${s}`,
     ),
     observation_result_requirements: (resolved?.observationSlugs ?? []).map(
-      (s) => `f-${facilityId}-${s}`,
+      (s: string) => `f-${facilityId}-${s}`,
     ),
     charge_item_definitions: (resolved?.chargeItemSlugs ?? []).map(
-      (s) => `f-${facilityId}-${s}`,
+      (s: string) => `f-${facilityId}-${s}`,
     ),
     locations: resolved?.locationIds ?? [],
     category: resolved?.categorySlug ?? "",

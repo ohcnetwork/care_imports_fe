@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 
-import { APIError, query } from "@/apis/request";
+import { HttpError, request } from "@/apis/request";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,11 +20,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import valueSetApi from "@/types/valueset/valueSetApi";
+import { downloadCsv } from "@/Utils/csv";
+import { mutate } from "@/Utils/request/mutate";
 import type {
   GroupedValueSet,
   ProcessedValueSetRow,
   ValueSetImportResults,
-} from "@/utils/valuesetHelpers";
+} from "@/Utils/valuesetHelpers";
 import {
   applyVerificationResults,
   buildValueSetPayload,
@@ -32,9 +35,7 @@ import {
   groupRowsBySlug,
   parseValueSetCsv,
   verifyAllCodes,
-} from "@/utils/valuesetHelpers";
-import valueSetApi from "@/types/valueset/valueSetApi";
-import { downloadCsv } from "@/utils/csv";
+} from "@/Utils/valuesetHelpers";
 
 type ActiveView =
   | { kind: "upload" }
@@ -584,27 +585,29 @@ async function importGroup(
 ): Promise<void> {
   try {
     const payload = buildValueSetPayload(group);
+    let existingValueSet = undefined;
     let exists = false;
 
     try {
-      await query(valueSetApi.get, { pathParams: { slug: group.slug } });
+      existingValueSet = await request(valueSetApi.get, {
+        pathParams: { slug: group.slug },
+      });
       exists = true;
     } catch (error) {
-      if (error instanceof APIError && error.status === 404) {
+      if (error instanceof HttpError && error.status === 404) {
         exists = false;
       } else {
         throw error;
       }
     }
 
-    if (exists) {
-      await query(valueSetApi.update, {
+    if (existingValueSet) {
+      await mutate(valueSetApi.update, {
         pathParams: { slug: group.slug },
-        body: payload,
-      });
+      })({ ...payload, id: existingValueSet.id });
       results.updated++;
     } else {
-      await query(valueSetApi.create, { body: payload });
+      await mutate(valueSetApi.create)(payload);
       results.created++;
     }
     results.processed++;

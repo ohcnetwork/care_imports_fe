@@ -1,9 +1,14 @@
-import { useCallback, useMemo, useState } from "react";
 import { AlertCircle, Database, Upload } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 
-import { APIError, query } from "@/apis/request";
-import observationDefinitionApi from "@/types/emr/observationDefinition/observationDefinitionApi";
+import { HttpError, request } from "@/apis/request";
 import { ImportFlow } from "@/components/imports";
+import {
+  OBS_DEF_REVIEW_COLUMNS,
+  parseMasterCsvToRows,
+  toObservationDefinitionDatapoint,
+  type ObservationDefinitionRow,
+} from "@/components/pages/ObservationDefinition/utils";
 import MasterDataFileSelector from "@/components/shared/MasterDataFileSelector";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -16,17 +21,13 @@ import {
 } from "@/components/ui/card";
 import { disableOverride } from "@/config";
 import { useMasterDataAvailability } from "@/hooks/useMasterDataAvailability";
-import type { ImportConfig, ProcessedRow } from "@/types/importConfig";
-import {
-  OBS_DEF_REVIEW_COLUMNS,
-  parseMasterCsvToRows,
-  toObservationDefinitionDatapoint,
-  type ObservationDefinitionRow,
-} from "@/components/pages/ObservationDefinition/utils";
+import type { ImportConfig, ProcessedRow } from "@/internalTypes/importConfig";
+import observationDefinitionApi from "@/types/emr/observationDefinition/observationDefinitionApi";
 import {
   generateSampleComponentsCsv,
   generateSampleDefinitionsCsv,
-} from "@/utils/observationDefinitionConstants";
+} from "@/Utils/observationDefinitionConstants";
+import { mutate } from "@/Utils/request/mutate";
 
 interface ObservationDefinitionImportNewProps {
   facilityId?: string;
@@ -114,13 +115,16 @@ export default function ObservationDefinitionImportNew({
         if (!facilityId) return undefined;
         const slug = `f-${facilityId}-${row.slug_value}`;
         try {
-          await query(observationDefinitionApi.get, {
-            pathParams: { observationSlug: slug },
-            queryParams: { facility: facilityId },
-          });
+          await request(
+            observationDefinitionApi.retrieveObservationDefinition,
+            {
+              pathParams: { observationSlug: slug },
+              queryParams: { facility: facilityId },
+            },
+          );
           return slug;
         } catch (error) {
-          if (error instanceof APIError && error.status === 404) {
+          if (error instanceof HttpError && error.status === 404) {
             return undefined;
           }
           throw error;
@@ -129,17 +133,16 @@ export default function ObservationDefinitionImportNew({
 
       createResource: async (row) => {
         if (!facilityId) return;
-        await query(observationDefinitionApi.create, {
-          body: toObservationDefinitionDatapoint(row, facilityId),
-        });
+        await mutate(observationDefinitionApi.createObservationDefinition)(
+          toObservationDefinitionDatapoint(row, facilityId),
+        );
       },
 
       updateResource: async (existingSlug, row) => {
         if (!facilityId) return;
-        await query(observationDefinitionApi.update, {
-          body: toObservationDefinitionDatapoint(row, facilityId, existingSlug),
+        await mutate(observationDefinitionApi.updateObservationDefinition, {
           pathParams: { observationSlug: existingSlug },
-        });
+        })(toObservationDefinitionDatapoint(row, facilityId, existingSlug));
       },
     }),
     [facilityId],

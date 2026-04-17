@@ -1,8 +1,26 @@
 import { AlertCircle, Database, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { APIError, query } from "@/apis/request";
+import { HttpError, request } from "@/apis/request";
 import { ImportFlow } from "@/components/imports";
+import {
+  AD_CSV_REVIEW_COLUMNS,
+  AD_HEADER_MAP,
+  AD_REQUIRED_HEADERS,
+  AD_REVIEW_COLUMNS,
+  AD_SAMPLE_CSV,
+  ActivityDefinitionCsvRowSchema,
+  applyHealthcareServiceMappings,
+  createValidationCache,
+  parseActivityDefinitionCsvRow,
+  parseMasterCsvToRows,
+  resolveReferences,
+  toActivityDefinitionDatapoint,
+  validateActivityDefinitionCsvRowsAsync,
+  type ActivityDefinitionCsvRow,
+  type ActivityDefinitionRow,
+  type ActivityDefinitionValidationCache,
+} from "@/components/pages/ActivityDefinition/utils";
 import MasterDataFileSelector from "@/components/shared/MasterDataFileSelector";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -22,38 +40,21 @@ import {
 } from "@/components/ui/select";
 import { disableOverride } from "@/config";
 import { useMasterDataAvailability } from "@/hooks/useMasterDataAvailability";
+import type { ImportConfig, ProcessedRow } from "@/internalTypes/importConfig";
+import { ResourceCategoryResourceType } from "@/types/base/resourceCategory/resourceCategory";
 import {
-  ActivityDefinitionClassification,
-  ActivityDefinitionKind,
-  ActivityDefinitionStatus,
+  Classification,
+  Kind,
+  Status,
 } from "@/types/emr/activityDefinition/activityDefinition";
 import activityDefinitionApi from "@/types/emr/activityDefinition/activityDefinitionApi";
-import { ResourceCategoryResourceType } from "@/types/base/resourceCategory/resourceCategory";
-import type { ImportConfig, ProcessedRow } from "@/types/importConfig";
-import {
-  AD_REVIEW_COLUMNS,
-  applyHealthcareServiceMappings,
-  parseMasterCsvToRows,
-  resolveReferences,
-  toActivityDefinitionDatapoint,
-  type ActivityDefinitionRow,
-} from "@/components/pages/ActivityDefinition/utils";
-import {
-  AD_CSV_REVIEW_COLUMNS,
-  AD_HEADER_MAP,
-  AD_REQUIRED_HEADERS,
-  AD_SAMPLE_CSV,
-  ActivityDefinitionCsvRowSchema,
-  createValidationCache,
-  parseActivityDefinitionCsvRow,
-  validateActivityDefinitionCsvRowsAsync,
-  type ActivityDefinitionCsvRow,
-  type ActivityDefinitionValidationCache,
-} from "@/components/pages/ActivityDefinition/utils";
-import type { HealthcareServiceOption } from "@/utils/activityDefinitionHelper";
-import type { ResolvedRow } from "@/utils/activityDefinitionHelper";
-import { normalizeName } from "@/utils/importHelpers";
-import { upsertResourceCategories } from "@/utils/resourceCategory";
+import type {
+  HealthcareServiceOption,
+  ResolvedRow,
+} from "@/Utils/activityDefinitionHelper";
+import { normalizeName } from "@/Utils/importHelpers";
+import { mutate } from "@/Utils/request/mutate";
+import { upsertResourceCategories } from "@/Utils/resourceCategory";
 
 interface ActivityDefinitionImportProps {
   facilityId?: string;
@@ -108,20 +109,20 @@ export default function ActivityDefinitionImport({
   // ─── Base Config (shared by CSV and master paths) ─────────────────
   const createBaseConfig = useCallback(() => {
     const base = {
-      resourceName: "Activity Definition" as const,
-      resourceNamePlural: "Activity Definitions" as const,
+      resourceName: "Activity Definition",
+      resourceNamePlural: "Activity Definitions",
       getRowIdentifier: (row: { slug_value?: string }) => row.slug_value ?? "",
 
       checkExists: async (row: { slug_value?: string }) => {
         if (!facilityId) return undefined;
         const slug = `f-${facilityId}-${row.slug_value}`;
         try {
-          await query(activityDefinitionApi.get, {
+          await request(activityDefinitionApi.retrieveActivityDefinition, {
             pathParams: { facilityId, activityDefinitionSlug: slug },
           });
           return slug;
         } catch (error) {
-          if (error instanceof APIError && error.status === 404) {
+          if (error instanceof HttpError && error.status === 404) {
             return undefined;
           }
           throw error;
@@ -208,9 +209,7 @@ export default function ActivityDefinitionImport({
               resourceType: ResourceCategoryResourceType.activity_definition,
               slugPrefix: "ad",
             });
-            catMap.forEach((slug, key) =>
-              cache.categorySlugMap.set(key, slug),
-            );
+            catMap.forEach((slug, key) => cache.categorySlugMap.set(key, slug));
           }
           resolved.categorySlug =
             cache.categorySlugMap.get(normalizedCat) ?? "";
@@ -223,23 +222,21 @@ export default function ActivityDefinitionImport({
       createResource: async (_row, _params, resolved) => {
         if (!facilityId) return;
         const adRow = csvRowToActivityDefinitionRow(_row, resolved);
-        await query(activityDefinitionApi.create, {
+        await mutate(activityDefinitionApi.createActivityDefinition, {
           pathParams: { facilityId },
-          body: toActivityDefinitionDatapoint(adRow, facilityId),
-        });
+        })(toActivityDefinitionDatapoint(adRow, facilityId));
       },
 
       updateResource: async (existingSlug, row) => {
         if (!facilityId) return;
         // For updates, we don't have preCreate result, build minimal resolved
         const adRow = csvRowToActivityDefinitionRow(row);
-        await query(activityDefinitionApi.update, {
+        await mutate(activityDefinitionApi.updateActivityDefinition, {
           pathParams: {
             facilityId,
             activityDefinitionSlug: existingSlug,
           },
-          body: toActivityDefinitionDatapoint(adRow, facilityId, existingSlug),
-        });
+        })(toActivityDefinitionDatapoint(adRow, facilityId, existingSlug));
       },
 
       // UI
@@ -263,18 +260,16 @@ export default function ActivityDefinitionImport({
 
       createResource: async (row) => {
         if (!facilityId) return;
-        await query(activityDefinitionApi.create, {
+        await mutate(activityDefinitionApi.createActivityDefinition, {
           pathParams: { facilityId },
-          body: toActivityDefinitionDatapoint(row, facilityId),
-        });
+        })(toActivityDefinitionDatapoint(row, facilityId));
       },
 
       updateResource: async (existingSlug, row) => {
         if (!facilityId) return;
-        await query(activityDefinitionApi.update, {
-          pathParams: { facilityId },
-          body: toActivityDefinitionDatapoint(row, facilityId, existingSlug),
-        });
+        await mutate(activityDefinitionApi.updateActivityDefinition, {
+          pathParams: { facilityId, activityDefinitionSlug: existingSlug },
+        })(toActivityDefinitionDatapoint(row, facilityId, existingSlug));
       },
     }),
     [facilityId, createBaseConfig],
@@ -565,9 +560,9 @@ function csvRowToActivityDefinitionRow(
     slug_value: row.slug_value,
     description: row.description,
     usage: row.usage,
-    status: row.status as ActivityDefinitionStatus,
-    classification: row.classification as ActivityDefinitionClassification,
-    kind: row.kind as ActivityDefinitionKind,
+    status: row.status as Status,
+    classification: row.classification as Classification,
+    kind: row.kind as Kind,
     code: row.code,
     body_site: row.body_site,
     diagnostic_report_codes: row.diagnostic_report_codes,
