@@ -1,3 +1,6 @@
+import { buildHeaderMap, validateRow } from "@/internalTypes/common";
+import type { ImportConfig, ProcessedRow } from "@/internalTypes/importConfig";
+
 export interface CsvParseResult {
   headers: string[];
   rows: string[][];
@@ -56,10 +59,6 @@ export function downloadCsv(filename: string, content: string): void {
   a.click();
   window.URL.revokeObjectURL(url);
 }
-
-// ─── CSV → ProcessedRow Utility ────────────────────────────────────
-import type { ImportConfig, ProcessedRow } from "@/types/importConfig";
-import { buildHeaderMap, validateRow } from "@/types/common";
 
 interface CsvParsingConfig<TRow> {
   requiredHeaders?: ImportConfig<TRow>["requiredHeaders"];

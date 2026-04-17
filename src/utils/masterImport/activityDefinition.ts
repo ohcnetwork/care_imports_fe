@@ -1,17 +1,8 @@
+import { ActivityDefinitionRow } from "@/components/pages/ActivityDefinition/utils";
 import type { Code } from "@/types/base/code/code";
-import type {
-  ActivityDefinitionProcessedRow,
-  ActivityDefinitionRow,
-  ParseActivityDefinitionOptions,
-} from "@/types/emr/activityDefinition/activityDefinition";
-import { parseCsvText } from "@/utils/csv";
-import { isUrlSafeSlug } from "@/utils/slug";
-
-export type {
-  ActivityDefinitionProcessedRow,
-  ActivityDefinitionRow,
-  ParseActivityDefinitionOptions,
-} from "@/types/emr/activityDefinition/activityDefinition";
+import { parseCsvText } from "@/Utils/csv";
+import { isUrlSafeSlug } from "@/Utils/slug";
+import { ActivityDefinitionProcessedRow } from "../activityDefinitionHelper";
 
 const REQUIRED_HEADERS = [
   "title",
@@ -81,7 +72,9 @@ const getCellValue = (
 
 export const parseActivityDefinitionCsv = (
   csvText: string,
-  options: ParseActivityDefinitionOptions = {},
+  options: {
+    requireChargeItemPrice?: boolean;
+  } = {},
 ): ActivityDefinitionProcessedRow[] => {
   const { headers, rows } = parseCsvText(csvText);
 

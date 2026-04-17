@@ -1,20 +1,32 @@
-import { APIError, query } from "@/apis/request";
+import { HttpError, request } from "@/apis/request";
 import type {
-  CodeSystem,
-  ValueSetInclude,
   ValueSetConcept,
   ValueSetCreate,
   ValueSetFilter,
-  ValueSetFilterOp,
-} from "@/types/valueset/valueset";
-import {
-  VALUESET_CODE_SYSTEMS,
-  VALUESET_FILTER_OPS,
-  ValueSetStatus,
-} from "@/types/valueset/valueset";
-import { parseCsvText } from "@/utils/csv";
+  ValueSetInclude,
+} from "@/types/valueSet/valueset";
+import { TERMINOLOGY_SYSTEMS, ValueSetStatus } from "@/types/valueSet/valueset";
 import valueSetApi from "@/types/valueset/valueSetApi";
-import { isUrlSafeSlug } from "@/utils/slug";
+import { parseCsvText } from "@/Utils/csv";
+import { isUrlSafeSlug } from "@/Utils/slug";
+
+export const VALID_OPERATORS = [
+  "=",
+  "is-a",
+  "descendent-of",
+  "is-not-a",
+  "regex",
+  "in",
+  "not-in",
+  "generalizes",
+  "child-of",
+  "descendent-leaf",
+  "exists",
+];
+
+type ValueSetFilterOp = (typeof VALID_OPERATORS)[number];
+
+const VALUESET_CODE_SYSTEMS = Object.values(TERMINOLOGY_SYSTEMS);
 
 // ---------------------------------------------------------------------------
 // CSV headers
@@ -208,10 +220,10 @@ export function parseValueSetCsv(csvText: string): {
       if (!data.filter_op) {
         errors.push("Missing filter_op for filter entry");
       } else if (
-        !(VALUESET_FILTER_OPS as readonly string[]).includes(data.filter_op)
+        !(VALID_OPERATORS as readonly string[]).includes(data.filter_op)
       ) {
         errors.push(
-          `Invalid op value "${data.filter_op}". Allowed values are ${JSON.stringify([...VALUESET_FILTER_OPS])}`,
+          `Invalid op value "${data.filter_op}". Allowed values are ${JSON.stringify([...VALID_OPERATORS])}`,
         );
       }
       if (!data.filter_value) {
@@ -327,18 +339,18 @@ export async function lookupCode(
   code: string,
 ): Promise<LookupCodeResult> {
   try {
-    const result = await query(valueSetApi.lookupCode, {
+    const result = await request(valueSetApi.lookup, {
       body: { system, code },
     });
     return {
       system,
       code,
-      display: result.metadata?.display ?? result.metadata?.name,
+      display: result?.metadata?.display ?? result.metadata?.name,
       valid: true,
     };
   } catch (error) {
     const message =
-      error instanceof APIError
+      error instanceof HttpError
         ? error.message
         : error instanceof Error
           ? error.message
@@ -437,7 +449,8 @@ export function buildValueSetPayload(group: GroupedValueSet): ValueSetCreate {
     let item = composeItems.get(key);
     if (!item) {
       item = {
-        system: row.data.system as CodeSystem,
+        system: row.data
+          .system as (typeof TERMINOLOGY_SYSTEMS)[keyof typeof TERMINOLOGY_SYSTEMS],
         concept: [],
         filter: [],
       };

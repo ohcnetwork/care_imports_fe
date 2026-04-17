@@ -1,5 +1,5 @@
-import type { ActivityDefinitionProcessedRow } from "@/types/emr/activityDefinition/activityDefinition";
-import { csvEscape } from "@/utils/importHelpers";
+import { csvEscape } from "@/Utils/importHelpers";
+import { ActivityDefinitionRow } from "./masterImport/activityDefinition";
 
 export interface ResolvedRow {
   categorySlug?: string;
@@ -10,8 +10,10 @@ export interface ResolvedRow {
   healthcareServiceId?: string | null;
 }
 
-export type ProcessedRow = ActivityDefinitionProcessedRow & {
-  resolved?: ResolvedRow;
+export type ActivityDefinitionProcessedRow = {
+  rowIndex: number;
+  data: ActivityDefinitionRow;
+  errors: string[];
 };
 
 export interface HealthcareServiceOption {

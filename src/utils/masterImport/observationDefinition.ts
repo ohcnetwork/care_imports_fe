@@ -12,8 +12,8 @@ import type {
 } from "@/types/emr/observationDefinition/observationDefinition";
 import type { ObservationDefinitionComponentCreateSpec } from "@/types/emr/observationDefinition/observationDefinition";
 import { QuestionType } from "@/types/emr/observationDefinition/observationDefinition";
-import { parseCsvText } from "@/utils/csv";
-import { isUrlSafeSlug } from "@/utils/slug";
+import { parseCsvText } from "@/Utils/csv";
+import { isUrlSafeSlug } from "@/Utils/slug";
 
 export type {
   ObservationProcessedRow,
