@@ -1,34 +1,51 @@
-import { HttpMethod, PaginatedResponse, Type } from "@/apis/types";
+import { HttpMethod, PaginatedResponse, Type } from "@/Utils/request/types";
 
-import type {
+import { Metrics } from "@/types/base/condition/condition";
+import {
+  ChargeItemDefinitionBase,
   ChargeItemDefinitionCreate,
   ChargeItemDefinitionRead,
 } from "./chargeItemDefinition";
 
 export default {
-  list: {
+  listChargeItemDefinition: {
     path: "/api/v1/facility/{facilityId}/charge_item_definition/",
     method: HttpMethod.GET,
-    TRes: Type<PaginatedResponse<ChargeItemDefinitionRead>>(),
+    TRes: Type<PaginatedResponse<ChargeItemDefinitionBase>>(),
   },
-
-  get: {
+  retrieveChargeItemDefinition: {
     path: "/api/v1/facility/{facilityId}/charge_item_definition/{slug}/",
     method: HttpMethod.GET,
     TRes: Type<ChargeItemDefinitionRead>(),
   },
-
-  create: {
+  createChargeItemDefinition: {
     path: "/api/v1/facility/{facilityId}/charge_item_definition/",
     method: HttpMethod.POST,
     TRes: Type<ChargeItemDefinitionRead>(),
     TBody: Type<ChargeItemDefinitionCreate>(),
   },
-
-  update: {
+  updateChargeItemDefinition: {
     path: "/api/v1/facility/{facilityId}/charge_item_definition/{slug}/",
     method: HttpMethod.PUT,
     TRes: Type<ChargeItemDefinitionRead>(),
     TBody: Type<ChargeItemDefinitionCreate>(),
+  },
+  listMetrics: {
+    // TODO: To be changed to /api/v1/charge_item_definition/metrics/ when BE is ready
+    path: "/api/v1/observation_definition/metrics/",
+    method: HttpMethod.GET,
+    TRes: Type<Metrics[]>(),
+  },
+  setTags: {
+    path: "/api/v1/facility/{facilityId}/charge_item_definition/{slug}/set_tags/",
+    method: HttpMethod.POST,
+    TRes: Type<ChargeItemDefinitionRead>(),
+    TBody: Type<{ tags: string[] }>(),
+  },
+  removeTags: {
+    path: "/api/v1/facility/{facilityId}/charge_item_definition/{slug}/remove_tags/",
+    method: HttpMethod.POST,
+    TRes: Type<ChargeItemDefinitionRead>(),
+    TBody: Type<{ tags: string[] }>(),
   },
 } as const;

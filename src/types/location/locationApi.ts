@@ -1,34 +1,87 @@
-import { HttpMethod, PaginatedResponse, Type } from "@/apis/types";
-import { LocationDetail, LocationWrite } from "./location";
+import { HttpMethod, PaginatedResponse, Type } from "@/Utils/request/types";
+import { FacilityOrganizationRead } from "@/types/facilityOrganization/facilityOrganization";
 
-// ─── Response Types ────────────────────────────────────────────────
-export interface LocationReadMinimal {
-  id: string;
-  name: string;
-  form: string;
-  has_children: boolean;
-  parent?: { id: string; name: string } | null;
-}
+import {
+  LocationAssociation,
+  LocationAssociationRead,
+  LocationAssociationRequest,
+  LocationAssociationUpdate,
+} from "./association";
+import { LocationDetail, LocationRead, LocationWrite } from "./location";
 
-// ─── API Routes ────────────────────────────────────────────────────
 export default {
   list: {
     path: "/api/v1/facility/{facility_id}/location/",
     method: HttpMethod.GET,
-    TRes: Type<PaginatedResponse<LocationReadMinimal>>(),
+    TRes: Type<PaginatedResponse<LocationRead>>(),
+    defaultQueryParams: {
+      ordering: "sort_index",
+    },
   },
-
+  get: {
+    path: "/api/v1/facility/{facility_id}/location/{id}/",
+    method: HttpMethod.GET,
+    TRes: Type<LocationDetail>(),
+  },
   create: {
     path: "/api/v1/facility/{facility_id}/location/",
     method: HttpMethod.POST,
     TRes: Type<LocationDetail>(),
     TBody: Type<LocationWrite>(),
   },
-
+  update: {
+    path: "/api/v1/facility/{facility_id}/location/{id}/",
+    method: HttpMethod.PUT,
+    TRes: Type<LocationDetail>(),
+    TBody: Type<LocationWrite>(),
+  },
+  delete: {
+    path: "/api/v1/facility/{facility_id}/location/{id}/",
+    method: HttpMethod.DELETE,
+    TRes: Type<void>(),
+  },
+  getOrganizations: {
+    path: "/api/v1/facility/{facility_id}/location/{id}/organizations",
+    method: HttpMethod.GET,
+    TRes: Type<PaginatedResponse<FacilityOrganizationRead>>(),
+  },
   addOrganization: {
-    path: "/api/v1/facility/{facility_id}/location/{location_id}/organizations_add/",
+    path: "/api/v1/facility/{facilityId}/location/{id}/organizations_add/",
     method: HttpMethod.POST,
     TRes: Type<LocationDetail>(),
     TBody: Type<{ organization: string }>(),
   },
-} as const;
+  removeOrganization: {
+    path: "/api/v1/facility/{facilityId}/location/{id}/organizations_remove/",
+    method: HttpMethod.POST,
+    TRes: Type<LocationDetail>(),
+    TBody: Type<{ organization: string }>(),
+  },
+  listAssociations: {
+    path: "/api/v1/facility/{facility_external_id}/location/{location_external_id}/association/",
+    method: HttpMethod.GET,
+    TRes: Type<PaginatedResponse<LocationAssociation>>(),
+  },
+  createAssociation: {
+    path: "/api/v1/facility/{facility_external_id}/location/{location_external_id}/association/",
+    method: HttpMethod.POST,
+    TRes: Type<LocationAssociation>(),
+    TBody: Type<LocationAssociationRequest>(),
+  },
+  getAssociation: {
+    path: "/api/v1/facility/{facility_external_id}/location/{location_external_id}/association/{external_id}/",
+    method: HttpMethod.GET,
+    TRes: Type<LocationAssociationRead>(),
+  },
+  updateAssociation: {
+    path: "/api/v1/facility/{facility_external_id}/location/{location_external_id}/association/{external_id}/",
+    method: HttpMethod.PUT,
+    TRes: Type<LocationAssociation>(),
+    TBody: Type<LocationAssociationUpdate>(),
+  },
+  deleteAssociation: {
+    path: "/api/v1/facility/{facility_external_id}/location/{location_external_id}/association/{external_id}/",
+    method: HttpMethod.DELETE,
+    TRes: Type<void>(),
+  },
+};

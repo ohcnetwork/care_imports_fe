@@ -1,45 +1,34 @@
-import { HttpMethod, PaginatedResponse, Type } from "@/apis/types";
+import { HttpMethod, PaginatedResponse, Type } from "@/Utils/request/types";
 
-import type {
+import {
   SpecimenDefinitionCreate,
   SpecimenDefinitionRead,
 } from "./specimenDefinition";
 
-export interface SpecimenDefinitionUpsertRequest {
-  datapoints: (SpecimenDefinitionCreate & { id?: string })[];
-}
-
 export default {
-  list: {
+  listSpecimenDefinitions: {
     path: "/api/v1/facility/{facilityId}/specimen_definition/",
     method: HttpMethod.GET,
     TRes: Type<PaginatedResponse<SpecimenDefinitionRead>>(),
+    defaultQueryParams: {
+      ordering: "-created_date",
+    },
   },
-
-  get: {
+  retrieveSpecimenDefinition: {
     path: "/api/v1/facility/{facilityId}/specimen_definition/{specimenSlug}/",
     method: HttpMethod.GET,
     TRes: Type<SpecimenDefinitionRead>(),
   },
-
-  create: {
-    path: "/api/v1/facility/{facilityId}/specimen_definition/",
-    method: HttpMethod.POST,
-    TRes: Type<SpecimenDefinitionRead>(),
-    TBody: Type<SpecimenDefinitionCreate>(),
-  },
-
-  update: {
+  updateSpecimenDefinition: {
     path: "/api/v1/facility/{facilityId}/specimen_definition/{specimenSlug}/",
     method: HttpMethod.PUT,
     TRes: Type<SpecimenDefinitionRead>(),
     TBody: Type<SpecimenDefinitionCreate>(),
   },
-
-  upsert: {
-    path: "/api/v1/facility/{facilityId}/specimen_definition/upsert/",
+  createSpecimenDefinition: {
+    path: "/api/v1/facility/{facilityId}/specimen_definition/",
     method: HttpMethod.POST,
-    TRes: Type<SpecimenDefinitionRead[]>(),
-    TBody: Type<SpecimenDefinitionUpsertRequest>(),
+    TRes: Type<SpecimenDefinitionRead>(),
+    TBody: Type<SpecimenDefinitionCreate>(),
   },
-} as const;
+};

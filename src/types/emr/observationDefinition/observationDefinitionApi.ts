@@ -1,45 +1,38 @@
-import { HttpMethod, PaginatedResponse, Type } from "@/apis/types";
+import { HttpMethod, PaginatedResponse, Type } from "@/Utils/request/types";
 
-import type {
+import { Metrics } from "@/types/base/condition/condition";
+import {
   ObservationDefinitionCreateSpec,
   ObservationDefinitionReadSpec,
 } from "./observationDefinition";
 
-export interface ObservationDefinitionUpsertRequest {
-  datapoints: (ObservationDefinitionCreateSpec & { id?: string })[];
-}
-
 export default {
-  list: {
+  listObservationDefinition: {
     path: "/api/v1/observation_definition/",
     method: HttpMethod.GET,
     TRes: Type<PaginatedResponse<ObservationDefinitionReadSpec>>(),
+    defaultQueryParams: {
+      ordering: "-created_date",
+    },
   },
-
-  get: {
+  retrieveObservationDefinition: {
     path: "/api/v1/observation_definition/{observationSlug}/",
     method: HttpMethod.GET,
     TRes: Type<ObservationDefinitionReadSpec>(),
   },
-
-  create: {
+  createObservationDefinition: {
     path: "/api/v1/observation_definition/",
     method: HttpMethod.POST,
-    TRes: Type<ObservationDefinitionReadSpec>(),
-    TBody: Type<ObservationDefinitionCreateSpec>(),
+    TRes: Type<ObservationDefinitionCreateSpec>(),
   },
-
-  update: {
+  updateObservationDefinition: {
     path: "/api/v1/observation_definition/{observationSlug}/",
     method: HttpMethod.PUT,
     TRes: Type<ObservationDefinitionReadSpec>(),
-    TBody: Type<ObservationDefinitionCreateSpec>(),
   },
-
-  upsert: {
-    path: "/api/v1/observation_definition/upsert/",
-    method: HttpMethod.POST,
-    TRes: Type<ObservationDefinitionReadSpec[]>(),
-    TBody: Type<ObservationDefinitionUpsertRequest>(),
+  getAllMetrics: {
+    path: "/api/v1/observation_definition/metrics/",
+    method: HttpMethod.GET,
+    TRes: Type<Metrics[]>(),
   },
 } as const;

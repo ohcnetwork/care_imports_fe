@@ -1,16 +1,28 @@
-import type { Code } from "../../base/code/code";
-import type { SlugConfig } from "../../base/slug/slugConfig";
+import { Code } from "@/types/base/code/code";
+import { ResourceCategoryRead } from "@/types/base/resourceCategory/resourceCategory";
+import { SlugConfig } from "@/types/base/slug/slugConfig";
+import { ChargeItemDefinitionRead } from "@/types/billing/chargeItemDefinition/chargeItemDefinition";
+import { ObservationDefinitionReadSpec } from "@/types/emr/observationDefinition/observationDefinition";
+import { SpecimenDefinitionRead } from "@/types/emr/specimenDefinition/specimenDefinition";
+import { TagConfig } from "@/types/emr/tagConfig/tagConfig";
+import { HealthcareServiceReadSpec } from "@/types/healthcareService/healthcareService";
+import { LocationRead } from "@/types/location/location";
 
-// ─── Enums (aligned with core FE) ──────────────────────────────────
-
-export enum ActivityDefinitionStatus {
+export enum Status {
   draft = "draft",
   active = "active",
   retired = "retired",
   unknown = "unknown",
 }
 
-export enum ActivityDefinitionClassification {
+export const ACTIVITY_DEFINITION_STATUS_COLORS = {
+  draft: "secondary",
+  active: "primary",
+  retired: "destructive",
+  unknown: "outline",
+} as const satisfies Record<Status, string>;
+
+export enum Classification {
   laboratory = "laboratory",
   imaging = "imaging",
   surgical_procedure = "surgical_procedure",
@@ -18,22 +30,20 @@ export enum ActivityDefinitionClassification {
   education = "education",
 }
 
-export enum ActivityDefinitionKind {
+export enum Kind {
   service_request = "service_request",
 }
-
-// ─── API Specs (aligned with core FE) ──────────────────────────────
 
 export interface BaseActivityDefinitionSpec {
   id: string;
   slug: string;
   title: string;
   derived_from_uri: string | null;
-  status: ActivityDefinitionStatus;
+  status: Status;
   description: string;
   usage: string;
-  classification: ActivityDefinitionClassification;
-  kind: ActivityDefinitionKind;
+  classification: Classification;
+  kind: Kind;
   code: Code;
   body_site: Code | null;
   diagnostic_report_codes: Code[];
@@ -54,53 +64,27 @@ export interface ActivityDefinitionCreateSpec extends Omit<
   healthcare_service: string | null;
 }
 
-export interface ActivityDefinitionUpdateSpec extends ActivityDefinitionCreateSpec {
-  id: string;
+export interface ActivityDefinitionUpdateSpec extends Omit<
+  BaseActivityDefinitionSpec,
+  "category" | "slug_config" | "slug"
+> {
+  slug_value: string;
+  facility: string;
+  specimen_requirements: string[];
+  charge_item_definitions: string[];
+  observation_result_requirements: string[];
+  locations: string[];
+  category: string;
+  healthcare_service: string | null;
 }
 
 export interface ActivityDefinitionReadSpec extends BaseActivityDefinitionSpec {
   version?: number;
-  specimen_requirements: unknown[];
-  charge_item_definitions: unknown[];
-  observation_result_requirements: unknown[];
-  locations: unknown[];
-  category: unknown;
-  healthcare_service: unknown;
-}
-
-export interface ActivityDefinitionUpsertRequest {
-  datapoints: ActivityDefinitionCreateSpec[];
-}
-
-// ─── Import Row Types ──────────────────────────────────────────────
-
-export type ActivityDefinitionRow = {
-  title: string;
-  slug_value: string;
-  description: string;
-  usage: string;
-  status: string;
-  classification: string;
-  kind: string;
-  code: Code;
-  body_site: Code | null;
-  diagnostic_report_codes: Code[];
-  derived_from_uri?: string;
-  category_name: string;
-  specimen_slugs: string[];
-  observation_slugs: string[];
-  charge_item_slugs: string[];
-  charge_item_price?: string;
-  location_names: string[];
-  healthcare_service_name?: string;
-};
-
-export type ActivityDefinitionProcessedRow = {
-  rowIndex: number;
-  data: ActivityDefinitionRow;
-  errors: string[];
-};
-
-export interface ParseActivityDefinitionOptions {
-  requireChargeItemPrice?: boolean;
+  tags: TagConfig[];
+  specimen_requirements: SpecimenDefinitionRead[];
+  charge_item_definitions: ChargeItemDefinitionRead[];
+  observation_result_requirements: ObservationDefinitionReadSpec[];
+  locations: LocationRead[];
+  category: ResourceCategoryRead;
+  healthcare_service: HealthcareServiceReadSpec;
 }

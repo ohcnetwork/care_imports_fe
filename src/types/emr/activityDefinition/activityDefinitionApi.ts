@@ -1,42 +1,31 @@
-import { HttpMethod, PaginatedResponse, Type } from "@/apis/types";
+import { HttpMethod, PaginatedResponse, Type } from "@/Utils/request/types";
 
-import type {
+import {
   ActivityDefinitionCreateSpec,
   ActivityDefinitionReadSpec,
-  ActivityDefinitionUpsertRequest,
 } from "./activityDefinition";
 
 export default {
-  list: {
+  listActivityDefinition: {
     path: "/api/v1/facility/{facilityId}/activity_definition/",
     method: HttpMethod.GET,
     TRes: Type<PaginatedResponse<ActivityDefinitionReadSpec>>(),
   },
-
-  get: {
+  retrieveActivityDefinition: {
     path: "/api/v1/facility/{facilityId}/activity_definition/{activityDefinitionSlug}/",
     method: HttpMethod.GET,
     TRes: Type<ActivityDefinitionReadSpec>(),
   },
-
-  create: {
+  createActivityDefinition: {
     path: "/api/v1/facility/{facilityId}/activity_definition/",
     method: HttpMethod.POST,
     TBody: Type<ActivityDefinitionCreateSpec>(),
     TRes: Type<ActivityDefinitionReadSpec>(),
   },
-
-  update: {
+  updateActivityDefinition: {
     path: "/api/v1/facility/{facilityId}/activity_definition/{activityDefinitionSlug}/",
     method: HttpMethod.PUT,
     TBody: Type<ActivityDefinitionCreateSpec>(),
     TRes: Type<ActivityDefinitionReadSpec>(),
-  },
-
-  upsert: {
-    path: "/api/v1/facility/{facilityId}/activity_definition/upsert/",
-    method: HttpMethod.POST,
-    TBody: Type<ActivityDefinitionUpsertRequest>(),
-    TRes: Type<void>(),
   },
 } as const;
