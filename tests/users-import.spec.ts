@@ -1,14 +1,14 @@
-import { test, expect } from "@playwright/test";
-import { goToImport } from "./helpers/navigation";
-import { createTempCsv, uploadCsvFile, cleanupTempFile } from "./helpers/csv";
+import { expect, test } from "@playwright/test";
+import { cleanupTempFile, createTempCsv, uploadCsvFile } from "./helpers/csv";
 import {
-  downloadSampleCsv,
-  expectReviewTable,
   clickImportButton,
+  downloadSampleCsv,
   expectImportSuccess,
-  expectValidationError,
+  expectReviewTable,
   expectUploadError,
+  expectValidationError,
 } from "./helpers/import-flow";
+import { goToImport } from "./helpers/navigation";
 
 test.use({ storageState: "tests/.auth/user.json" });
 
@@ -51,7 +51,7 @@ test.describe("Users Import", () => {
           "Test",
           "User",
           `test.user.${Date.now()}@example.com`,
-          "+919876543210",
+          "+919" + Math.floor(100000000 + Math.random() * 900000000).toString(),
           "male",
           "SecurePass123!",
           `testuser_${Date.now()}`,

@@ -1,11 +1,11 @@
-import { z } from "zod";
 import { normalizeHeader, SlugSchema } from "@/internalTypes/common";
 import {
-  ProductKnowledgeStatus,
   ProductKnowledgeCreate,
+  ProductKnowledgeStatus,
   ProductKnowledgeType,
   ProductNameTypes,
 } from "@/types/inventory/productKnowledge/productKnowledge";
+import { z } from "zod";
 
 // ─── Code Systems ──────────────────────────────────────────────────
 export const SNOMED_SYSTEM = "http://snomed.info/sct";
@@ -239,7 +239,8 @@ export function parseProductKnowledgeRow(
 
   for (const header of PK_ALL_HEADERS) {
     const idx = headerIndices[header];
-    result[header] = idx !== undefined ? (row[idx]?.trim() ?? "") : "";
+    const value = idx !== undefined ? (row[idx]?.trim() ?? "") : "";
+    result[header] = value === "" && !(PK_REQUIRED_HEADERS as readonly string[]).includes(header) ? undefined : value;
   }
 
   return result;

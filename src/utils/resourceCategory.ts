@@ -56,21 +56,24 @@ export async function upsertResourceCategories({
     }),
   );
 
+  console.log("Existing categories:", existingLookup);
+
   const newDatapoints = categoryEntries
     .filter(({ normalized }) => !existingLookup.has(normalized))
     .map(({ category, slug }) => ({ category, slug }));
 
+  console.log("New categories to create:", newDatapoints);
+
   if (newDatapoints.length > 0) {
     await Promise.all(
       newDatapoints.map(async ({ category, slug }) => {
-        mutate(resourceCategoryApi.create, {
+        await mutate(resourceCategoryApi.create, {
           pathParams: { facilityId },
-          body: {
-            title: category,
-            slug_value: `${slugPrefix}-${slug}`,
-            resource_type: resourceType,
-            resource_sub_type: ResourceCategorySubType.other,
-          },
+        })({
+          title: category,
+          slug_value: `${slugPrefix}-${slug}`,
+          resource_type: resourceType,
+          resource_sub_type: ResourceCategorySubType.other,
         });
       }),
     );

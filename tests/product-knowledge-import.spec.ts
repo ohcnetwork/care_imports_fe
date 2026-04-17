@@ -1,21 +1,20 @@
-import { test, expect } from "@playwright/test";
-import { goToImport } from "./helpers/navigation";
-import { createTempCsv, uploadCsvFile, cleanupTempFile } from "./helpers/csv";
+import { expect, test } from "@playwright/test";
+import { cleanupTempFile, createTempCsv, uploadCsvFile } from "./helpers/csv";
 import {
-  downloadSampleCsv,
-  expectReviewTable,
   clickImportButton,
+  downloadSampleCsv,
   expectImportSuccess,
-  expectValidationError,
+  expectReviewTable,
   expectUploadError,
-  clickBack,
+  expectValidationError,
 } from "./helpers/import-flow";
 import {
+  clickMasterDataBack,
   isMasterDataAvailable,
   openMasterDataSelector,
   selectFirstMasterFile,
-  clickMasterDataBack,
 } from "./helpers/master-data";
+import { goToImport } from "./helpers/navigation";
 
 test.use({ storageState: "tests/.auth/user.json" });
 
@@ -30,7 +29,7 @@ test.describe("Product Knowledge Import", () => {
     page,
   }) => {
     await expect(
-      page.getByText(/import product knowledges from csv/i),
+      page.getByText(/import product knowledge from csv/i),
     ).toBeVisible();
     await expect(
       page.getByRole("button", { name: /download sample/i }),

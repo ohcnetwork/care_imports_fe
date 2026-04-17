@@ -96,6 +96,7 @@ export function LocationTreePicker({
       setLoading(true);
       try {
         const response = await request(locationApi.list, {
+          pathParams: { facility_id: facilityId },
           queryParams: {
             parent: parent ?? undefined,
             name: search || undefined,

@@ -1,5 +1,5 @@
-import { z } from "zod";
 import { normalizeHeader } from "@/internalTypes/common";
+import { z } from "zod";
 
 // ─── Shared Helpers ────────────────────────────────────────────────
 const normalize = (s: string) => s.trim().toLowerCase();
@@ -42,7 +42,7 @@ export function toDepartmentCreatePayload(
   return {
     name: row.name.trim(),
     description: "",
-    org_type: "dept",
+    org_type: "team",
     facility: facilityId,
   };
 }
