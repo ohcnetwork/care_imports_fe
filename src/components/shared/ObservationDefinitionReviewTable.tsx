@@ -15,7 +15,7 @@ import type {
 import {
   formatComponentRanges,
   getComponentUnit,
-} from "@/utils/formatComponentRanges";
+} from "@/Utils/formatComponentRanges";
 
 interface ObservationDefinitionReviewTableProps {
   processedRows: ObservationProcessedRow[];
@@ -178,7 +178,9 @@ function ComponentsSubTable({
                   <td className="px-4 py-2">{comp.code?.display ?? "-"}</td>
                   <td className="px-4 py-2">
                     {comp.permitted_data_type ? (
-                      <Badge variant="outline">{comp.permitted_data_type}</Badge>
+                      <Badge variant="outline">
+                        {comp.permitted_data_type}
+                      </Badge>
                     ) : (
                       "-"
                     )}

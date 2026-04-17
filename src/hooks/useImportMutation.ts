@@ -1,8 +1,8 @@
+import type { ImportFailure, ImportResults } from "@/internalTypes/common";
+import { createEmptyResults } from "@/internalTypes/common";
+import type { ImportParams } from "@/internalTypes/importConfig";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
-import type { ImportFailure, ImportResults } from "@/types/common";
-import { createEmptyResults } from "@/types/common";
-import type { ImportParams } from "@/types/importConfig";
 
 export interface UseImportMutationOptions<
   TRow,
