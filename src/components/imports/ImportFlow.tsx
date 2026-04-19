@@ -24,6 +24,9 @@ export interface ImportFlowProps<
   /** Pre-parsed rows — when provided, skips upload and starts at review */
   processedRows?: ProcessedRow<TRow>[];
 
+  /** Show row selection checkboxes in review table (default: true) */
+  selectable?: boolean;
+
   /** Optional: Disable manual upload (e.g., when master data override is active) */
   disableUpload?: boolean;
 
@@ -48,6 +51,7 @@ export function ImportFlow<
 >({
   config,
   processedRows: externalRows,
+  selectable = false,
   disableUpload = false,
   disabledMessage,
   onBack: externalOnBack,
@@ -57,6 +61,7 @@ export function ImportFlow<
   const hasExternalRows = externalRows !== undefined;
   const needsExternalValidation =
     hasExternalRows && !!config.validateRows && !!config.getRowIdentifier;
+  const selectableReview = hasExternalRows ? true : selectable;
   const [currentStep, _setCurrentStep] = useState<ImportStep>(
     hasExternalRows
       ? needsExternalValidation
@@ -312,6 +317,7 @@ export function ImportFlow<
           resourceName={config.resourceName}
           onStartImport={handleStartImport}
           onBack={handleBack}
+          selectable={selectableReview}
         />
       )}
 
