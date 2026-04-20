@@ -43,7 +43,8 @@ Once that’s done, navigate to FE admin panel and setup plugin config.
 1. Open Care frontend.
 2. Go to Admin Dashboard from the navbar.
 3. Open Apps and click Add New Config.
-4. Add the config below; for local development, the url should point to your local server, otherwise point to the plugin’s server.
+4. Add the config below and save; for local development, the url should point to your local server, otherwise point to the plugin’s server.
+5. Imports/Exports option should show up in the sidebar. You may have to refresh the page for the plugin to load.
 
 ```{
 "url": "http://localhost:5273/assets/remoteEntry.js",
