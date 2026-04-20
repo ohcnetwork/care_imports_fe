@@ -15,7 +15,8 @@
     "format": "prettier --write 'src/**/*.{ts,tsx}'",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "unimported": "unimported"
+    "unimported": "unimported",
+    "sync-types": "bash scripts/sync-types.sh"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",

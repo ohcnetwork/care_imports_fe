@@ -8,6 +8,7 @@ A plug-in for [Care](https://github.com/ohcnetwork/care_fe) that helps hospital 
 
 - [Scripts](#scripts)
 - [How It Works](#how-it-works)
+- [Import Behavior - Create/Update](#import-behavior-matrix)
 - [Recommended Import Order](#recommended-import-order)
 - [What Is a Slug?](#what-is-a-slug)
 - [Import Guides](#import-guides)
@@ -27,7 +28,9 @@ A plug-in for [Care](https://github.com/ohcnetwork/care_fe) that helps hospital 
 
 ---
 
-## Scripts
+## Setup
+
+To use the plugin, you will need to spin up both Care [backend](https://github.com/ohcnetwork/care) and [frontend](https://github.com/ohcnetwork/care_fe) first. You can build/serve the plugin using following commands:
 
 ```bash
 npm run start   # builds and serves preview on port 5273
@@ -42,16 +45,34 @@ npm run preview # preview the build
 Every import follows the same three-step flow:
 
 1. **Upload** — Pick a CSV file from your computer and upload it.
-2. **Review** — The system validates every row and shows you a preview. Valid rows are marked green, invalid rows are marked red with a clear reason (e.g. "Missing name", "Invalid type").
-3. **Import** — Click the import button. Only valid rows are sent. You get a final summary: how many were created, skipped, or failed.
+2. **Review** — The system validates every row and shows you a preview. Valid rows are marked green, invalid rows are marked red with a clear reason (e.g. "Missing name", "Invalid type"). For CSV imports, every row needs to be valid to proceed.
+3. **Import** — Click the import button. You get a final summary: how many were created, skipped, or failed.
 
 Each import screen also has a **Download Sample CSV** button so you can see the exact format expected.
 
 ---
 
+## Import Behavior - Create/Update
+
+| Import Type               | Create | Update | Skip                       | Match Key                      |
+| ------------------------- | ------ | ------ | -------------------------- | ------------------------------ |
+| Users                     | Yes    | No     | Yes                        | `username`                     |
+| Departments               | Yes    | No     | Top-level reuse only       | `name + parent`                |
+| Link Users to Departments | Yes    | No     | Yes (already-linked pairs) | `username + role + department` |
+| Charge Item Definitions   | Yes    | Yes    | No                         | `slug_value`                   |
+| Locations                 | Yes    | No     | Path-level dedup           | `hierarchy path`               |
+| Product Knowledge         | Yes    | Yes    | No                         | `slug`                         |
+| Products                  | Yes    | No     | No                         | new product rows               |
+| Specimen Definitions      | Yes    | Yes    | No                         | `slug_value`                   |
+| Observation Definitions   | Yes    | Yes    | No                         | `slug_value`                   |
+| Activity Definitions      | Yes    | Yes    | No                         | `slug_value`                   |
+| Value Sets                | Yes    | Yes    | No                         | `slug`                         |
+
+---
+
 ## Recommended Import Order
 
-Some imports depend on data from earlier imports. You can import in any order, but if something is missing, the system will tell you. The safest sequence is:
+Some imports depend on data from earlier imports. While it is strongly recommended that you follow the order prescribed below, you can import in any order. If something is missing, the system will tell you. The safest sequence is:
 
 1. **Users** — Create staff accounts first.
 2. **Departments** — Set up your department structure.
@@ -108,7 +129,6 @@ Upload a CSV to create staff accounts. If a user with the same username already 
 
 **Required columns:**
 
-- `userType` — One of: `doctor`, `staff`, `nurse`, `volunteer`, `administrator`
 - `prefix` — e.g. `Mr.`, `Ms.`, `Dr.`
 - `firstName` — First name
 - `lastName` — Last name
@@ -116,7 +136,7 @@ Upload a CSV to create staff accounts. If a user with the same username already 
 - `phoneNumber` — Phone number (`+91` is added automatically)
 - `gender` — One of: `male`, `female`, `transgender`, `non_binary`
 - `username` — Login username (will be lowercased automatically; special characters are replaced with underscores)
-- `password` — Initial password
+- `password` — Initial password (**minimum 8 characters**)
 
 **Optional columns:**
 
@@ -126,6 +146,7 @@ Upload a CSV to create staff accounts. If a user with the same username already 
 
 - If a username already exists in the system, that row is skipped
 - Usernames are cleaned up: lowercased, and characters like spaces or `@` are replaced with `_`
+- Password must be at least 8 characters
 - After import, you can download a failure report listing any rows that couldn't be created
 
 > **Note:** Make sure there are no spaces in username. If there is a space ex: `abhilash thtn`, the username will be created as `abhilash_thtn`
@@ -260,7 +281,7 @@ You repeat this pattern for each level of nesting. The **last column** can optio
 
 **What happens during import:**
 
-- Rows that start with the same location names are merged — you won't get duplicate buildings
+- Rows with the same full hierarchy path are deduplicated — the first occurrence is used
 - Beds are created as physical instances; everything else is created as a category/kind
 - Departments are linked to locations (except buildings, wings, and levels which don't get department links)
 - All locations start as "active" and "unoccupied"
@@ -322,6 +343,13 @@ Consumable,surgical-gloves-m,Surgical Gloves (Medium),consumable,,,count,,,,,,,,
 
 This is the **inventory import** — it adds actual stocked items to your facility. This is the most powerful import because it can **automatically create** supporting records (product knowledge and charge items) if they don't already exist.
 
+**Before upload (configuration step):**
+
+- You first choose an inventory destination location and supplier
+- **Continue** is enabled only after both are selected
+- You can use **Skip** to continue without inventory destination setup
+- If you skip (or leave destination unconfigured), products can still be imported but inventory stock is not added
+
 **Required columns:**
 
 - `name` — Product display name (e.g. "Paracetamol 500mg")
@@ -333,11 +361,11 @@ This is the **inventory import** — it adds actual stocked items to your facili
 - `inventoryQuantity` — How many units you have in stock (defaults to 0)
 - `dosageForm` — Dosage form (e.g. "tablet", "capsule"). Used if the system needs to create a new product knowledge entry.
 - `lot_number` — Batch/lot number for this stock
-- `expiration_date` — Expiration date (e.g. `2027-12-31`)
+- `expiration_date` — Expiration date in `DD/MM/YYYY` format (e.g. `31/12/2027`)
 - `product_knowledge_name` — Name of an existing product knowledge entry to link to. If omitted, the system looks for one matching the `name` column.
 - `charge_item_definition_name` — Name of an existing charge item to link to. If omitted, the system looks for one matching the `name` column.
-- `product_knowledge_slug` — Slug of an existing product knowledge entry. Use this for an exact match instead of name-based search. **Also required if you want the system to create a new product knowledge entry.**
-- `charge_item_definition_slug` — Slug of an existing charge item definition. Use this for an exact match. **Also required if you want the system to create a new charge item definition.**
+- `product_knowledge_slug` — Slug of an existing product knowledge entry. Use this for an exact match instead of name-based search.
+- `charge_item_definition_slug` — Slug of an existing charge item definition. Use this for an exact match.
 
 #### How Names and Slugs Work Together
 
@@ -375,9 +403,9 @@ The product import tries to find existing product knowledge and charge item defi
 
 ```csv
 name,type,basePrice,inventoryQuantity,dosageForm,lot_number,expiration_date,product_knowledge_name,charge_item_definition_name,product_knowledge_slug,charge_item_definition_slug
-Paracetamol 500mg,medication,12.50,500,tablet,LOT-2026-A,2027-12-31,,,paracetamol-500mg,paracetamol-charge
+Paracetamol 500mg,medication,12.50,500,tablet,LOT-2026-A,31/12/2027,,,paracetamol-500mg,paracetamol-charge
 Surgical Gloves (M),consumable,,200,,,,,,surgical-gloves-m,
-IV Normal Saline 500ml,medication,45,100,solution,LOT-NS-001,2027-06-30,,,iv-ns-500ml,iv-ns-charge
+IV Normal Saline 500ml,medication,45,100,solution,LOT-NS-001,30/06/2027,,,iv-ns-500ml,iv-ns-charge
 ```
 
 In this example:
@@ -673,6 +701,8 @@ For these, the import screen shows two options:
 
 - **Upload CSV** — Prepare your own file and upload it
 - **Import from Dataset** — Load a pre-built, curated dataset and pick the items your facility needs
+
+Selection with checkboxes applies to the **Import from Dataset** flow. Regular CSV upload follows the standard upload → review → import flow.
 
 When importing from a dataset:
 
