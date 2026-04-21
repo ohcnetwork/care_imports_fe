@@ -1,5 +1,5 @@
+import type { ImportResults } from "@/internalTypes/common";
 import type { z } from "zod";
-import type { ImportResults } from "@/types/common";
 
 /**
  * Additional parameters passed to createResource by the import hook.
@@ -66,9 +66,9 @@ export interface ImportConfig<
    * Useful for creating dependent resources (e.g., ProductKnowledge before Product).
    * @param row - Validated row data
    * @param beforeResult - Result from beforeImport hook
-   * @returns Data to be passed to createResource
+   * @returns Data to be passed to createResource/updateResource
    */
-  preCreate?: (row: TRow, beforeResult: TBefore) => Promise<TPreCreate>;
+  preCreateUpdate?: (row: TRow, beforeResult: TBefore) => Promise<TPreCreate>;
 
   /**
    * Optional hook to run once after all rows are processed.
@@ -100,8 +100,17 @@ export interface ImportConfig<
     preCreateResult?: TPreCreate,
   ) => Promise<TCreated>;
 
-  /** Update an existing resource (called when checkExists returns an ID) */
-  updateResource?: (id: string, row: TRow) => Promise<void>;
+  /**
+   * Update an existing resource (called when checkExists returns an ID).
+   * @param id - The existing resource ID
+   * @param row - Validated row data
+   * @param preCreateResult - Result from preCreate hook (if provided)
+   */
+  updateResource?: (
+    id: string,
+    row: TRow,
+    preCreateResult?: TPreCreate,
+  ) => Promise<void>;
 
   /** Optional post-creation hook (e.g., create inventory after product) */
   postCreate?: (row: TRow, created: TCreated) => Promise<void>;

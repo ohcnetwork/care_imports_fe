@@ -30,13 +30,13 @@ export interface UseImportMutationOptions<
   beforeImport?: () => Promise<TBefore>;
 
   /**
-   * Optional function to run per-row before createResource.
+   * Optional function to run per-row before createResource/updateResource.
    * Useful for creating dependent resources (e.g., ProductKnowledge before Product).
    * @param row - Validated row data
    * @param beforeResult - Result from beforeImport hook
-   * @returns Data to be passed to createResource
+   * @returns Data to be passed to createResource/updateResource
    */
-  preCreate?: (row: TRow, beforeResult: TBefore) => Promise<TPreCreate>;
+  preCreateUpdate?: (row: TRow, beforeResult: TBefore) => Promise<TPreCreate>;
 
   /**
    * Optional function to run after creation (e.g., create inventory delivery after product).
@@ -62,8 +62,15 @@ export interface UseImportMutationOptions<
 
   /**
    * Optional function to update an existing resource.
+   * @param id - The existing resource ID
+   * @param row - Validated row data
+   * @param preCreateResult - Result from preCreate hook (if provided)
    */
-  updateResource?: (id: string, row: TRow) => Promise<void>;
+  updateResource?: (
+    id: string,
+    row: TRow,
+    preCreateResult?: TPreCreate,
+  ) => Promise<void>;
 
   /**
    * Query keys to invalidate after import completes.
@@ -131,7 +138,7 @@ export function useImportMutation<
   const {
     createResource,
     beforeImport,
-    preCreate,
+    preCreateUpdate,
     postCreate,
     afterImport,
     checkExists,
@@ -182,6 +189,14 @@ export function useImportMutation<
         const batchResults = await Promise.all(
           batch.map(async (row, batchIndex) => {
             const rowIndex = i + batchIndex + 2; // +2 for 1-indexed + header row
+            // Run preCreateUpdate hook for creates/updates (if it exists)
+            let preCreateUpdateResult: TPreCreate | undefined;
+            if (preCreateUpdate) {
+              preCreateUpdateResult = await preCreateUpdate(
+                row,
+                beforeResult as TBefore,
+              );
+            }
 
             try {
               // Check if resource already exists
@@ -193,17 +208,15 @@ export function useImportMutation<
                     createdIds.set(getRowIdentifier(row), existingId);
                   }
                   if (updateResource) {
-                    await updateResource(existingId, row);
+                    await updateResource(
+                      existingId,
+                      row,
+                      preCreateUpdateResult,
+                    );
                     return { status: "updated" as const, created: undefined };
                   }
                   return { status: "skipped" as const, created: undefined };
                 }
-              }
-
-              // Run preCreate hook (per-row, before createResource)
-              let preCreateResult: TPreCreate | undefined;
-              if (preCreate) {
-                preCreateResult = await preCreate(row, beforeResult as TBefore);
               }
 
               // Build params for createResource
@@ -219,7 +232,7 @@ export function useImportMutation<
               const created = await createResource(
                 row,
                 params,
-                preCreateResult,
+                preCreateUpdateResult,
               );
 
               // Store created ID for hierarchical lookups

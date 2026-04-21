@@ -1,14 +1,17 @@
-import { test, expect } from "@playwright/test";
-import { goToImport } from "./helpers/navigation";
-import { createTempCsv, uploadCsvFile, cleanupTempFile } from "./helpers/csv";
+import { expect, test } from "@playwright/test";
+import { fetchApiResults, getApiBaseUrl, getAuthHeaders } from "./helpers/api";
+import { cleanupTempFile, createTempCsv, uploadCsvFile } from "./helpers/csv";
 import {
-  downloadSampleCsv,
-  expectReviewTable,
-  expectValidationError,
-  expectUploadError,
   clickImportButton,
+  downloadSampleCsv,
   expectImportSuccess,
+  expectReviewTable,
+  expectUploadError,
+  expectValidationError,
+  pickCategory,
 } from "./helpers/import-flow";
+import { goToImport } from "./helpers/navigation";
+import { getFacility } from "./utils/facility";
 
 const AD_REQUIRED_HEADERS = [
   "title",
@@ -44,13 +47,20 @@ const ALL_HEADERS = [...AD_REQUIRED_HEADERS, ...AD_OPTIONAL_HEADERS];
 
 test.use({ storageState: "tests/.auth/user.json" });
 
-function makeValidAdRow(suffix: string | number): string[] {
+// Module-level variables for test category (populated in beforeAll)
+let testCategorySlug: string;
+let testCategoryTitle: string;
+
+function makeValidAdRow(
+  prefix: string | number,
+  categoryName = "TestCategory",
+): string[] {
   return [
-    `Test Activity ${suffix}`, // title
+    `AD ${prefix}: Test Activity`, // title
     "Test activity definition", // description
     "Order test for evaluation", // usage
     "laboratory", // classification
-    "TestCategory", // category_name
+    categoryName, // category_name
     "http://snomed.info/sct", // code_system
     "26604007", // code_value
     "Complete blood count", // code_display
@@ -59,6 +69,57 @@ function makeValidAdRow(suffix: string | number): string[] {
 }
 
 test.describe("Activity Definition Import", () => {
+  test.beforeAll(async ({ request }) => {
+    // Bootstrap test category or reuse existing one
+    const facility = getFacility();
+    const apiUrl = getApiBaseUrl();
+    const headers = getAuthHeaders();
+
+    // List existing categories
+    try {
+      const categories = await fetchApiResults<{ slug: string; title: string }>(
+        request,
+        "resource_category/",
+        {
+          facilityId: facility.id,
+          params: { resource_type: "activity_definition" },
+        },
+      );
+      if (categories.length > 0) {
+        testCategorySlug = categories[0].slug;
+        testCategoryTitle = categories[0].title;
+        console.log(`ℹ️ Using existing test category: ${testCategoryTitle}`);
+        return;
+      }
+    } catch {
+      // No existing categories, create one below
+    }
+
+    // Create a new test category
+    testCategoryTitle = `Test Category ${Date.now()}`;
+    const createResponse = await request.post(
+      `${apiUrl}/api/v1/facility/${facility.id}/resource_category/`,
+      {
+        headers,
+        data: {
+          title: testCategoryTitle,
+          resource_type: "activity_definition",
+          resource_sub_type: "other",
+        },
+      },
+    );
+
+    if (!createResponse.ok()) {
+      throw new Error(
+        `Failed to create test category: ${createResponse.status()} ${await createResponse.text()}`,
+      );
+    }
+
+    const categoryData = await createResponse.json();
+    testCategorySlug = categoryData.slug;
+    console.log(`✅ Created test category: ${testCategoryTitle}`);
+  });
+
   test.beforeEach(async ({ page }) => {
     await goToImport(page, "activity-definition");
   });
@@ -190,7 +251,10 @@ test.describe("Activity Definition Import", () => {
     try {
       await uploadCsvFile(page, csvPath);
       await expectReviewTable(page, { invalidCount: 1 });
-      await expectValidationError(page, /category name is required/i);
+      await expectValidationError(
+        page,
+        /category name is required|either category/i,
+      );
     } finally {
       cleanupTempFile(csvPath);
     }
@@ -213,8 +277,8 @@ test.describe("Activity Definition Import", () => {
   });
 
   test("should upload valid CSV and reach review step", async ({ page }) => {
-    const suffix = Date.now();
-    const csvPath = createTempCsv(ALL_HEADERS, [makeValidAdRow(suffix)]);
+    const prefix = Date.now();
+    const csvPath = createTempCsv(ALL_HEADERS, [makeValidAdRow(prefix)]);
 
     try {
       await uploadCsvFile(page, csvPath);
@@ -224,15 +288,26 @@ test.describe("Activity Definition Import", () => {
     }
   });
 
-  test("should complete full import flow", async ({ page }) => {
-    const suffix = Date.now();
-    const csvPath = createTempCsv(ALL_HEADERS, [makeValidAdRow(suffix)]);
+  test("should complete full import flow", async ({ page, request }) => {
+    const prefix = Date.now();
+    const uniqueTitle = `AD ${prefix}: Test Activity`;
+    const csvPath = createTempCsv(ALL_HEADERS, [makeValidAdRow(prefix)]);
 
     try {
       await uploadCsvFile(page, csvPath);
       await expectReviewTable(page, { validCount: 1, totalCount: 1 });
       await clickImportButton(page);
       await expectImportSuccess(page);
+
+      // Verify the imported activity definition exists in the database
+      const facility = getFacility();
+      const results = await fetchApiResults<{ title: string }>(
+        request,
+        "activity_definition/",
+        { facilityId: facility.id, params: { title: uniqueTitle } },
+      );
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].title).toBe(uniqueTitle);
     } finally {
       cleanupTempFile(csvPath);
     }
@@ -241,8 +316,8 @@ test.describe("Activity Definition Import", () => {
   test("should show error in review for non-existing specimen dependency", async ({
     page,
   }) => {
-    const suffix = Date.now();
-    const row = makeValidAdRow(suffix);
+    const prefix = Date.now();
+    const row = makeValidAdRow(prefix);
     const specimenIndex =
       AD_REQUIRED_HEADERS.length +
       AD_OPTIONAL_HEADERS.indexOf("specimen_slugs");
@@ -262,8 +337,8 @@ test.describe("Activity Definition Import", () => {
   test("should show error in review for non-existing observation dependency", async ({
     page,
   }) => {
-    const suffix = Date.now();
-    const row = makeValidAdRow(suffix);
+    const prefix = Date.now();
+    const row = makeValidAdRow(prefix);
     const observationIndex =
       AD_REQUIRED_HEADERS.length +
       AD_OPTIONAL_HEADERS.indexOf("observation_slugs");
@@ -283,8 +358,8 @@ test.describe("Activity Definition Import", () => {
   test("should show error in review for non-existing charge item dependency", async ({
     page,
   }) => {
-    const suffix = Date.now();
-    const row = makeValidAdRow(suffix);
+    const prefix = Date.now();
+    const row = makeValidAdRow(prefix);
     const chargeItemIndex =
       AD_REQUIRED_HEADERS.length +
       AD_OPTIONAL_HEADERS.indexOf("charge_item_slugs");
@@ -304,8 +379,8 @@ test.describe("Activity Definition Import", () => {
   test("should show error in review for non-existing location dependency", async ({
     page,
   }) => {
-    const suffix = Date.now();
-    const row = makeValidAdRow(suffix);
+    const prefix = Date.now();
+    const row = makeValidAdRow(prefix);
     const locationIndex =
       AD_REQUIRED_HEADERS.length +
       AD_OPTIONAL_HEADERS.indexOf("location_names");
@@ -325,8 +400,8 @@ test.describe("Activity Definition Import", () => {
   test("should show error in review for non-existing healthcare service dependency", async ({
     page,
   }) => {
-    const suffix = Date.now();
-    const row = makeValidAdRow(suffix);
+    const prefix = Date.now();
+    const row = makeValidAdRow(prefix);
     const hsIndex =
       AD_REQUIRED_HEADERS.length +
       AD_OPTIONAL_HEADERS.indexOf("healthcare_service_name");
@@ -338,6 +413,150 @@ test.describe("Activity Definition Import", () => {
       await uploadCsvFile(page, csvPath);
       await expectReviewTable(page, { invalidCount: 1, totalCount: 1 });
       await expectValidationError(page, /healthcare service not found/i);
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  test("should accept CSV without category_name header when picker category is selected", async ({
+    page,
+  }) => {
+    // Create headers without category_name
+    const headersWithoutCategory = AD_REQUIRED_HEADERS.filter(
+      (h) => h !== "category_name",
+    ).concat(AD_OPTIONAL_HEADERS);
+
+    const row = [
+      "AD: Picker Test Activity",
+      "Test activity with picker category",
+      "Order test",
+      "laboratory",
+      // No category_name value
+      "http://snomed.info/sct",
+      "26604007",
+      "Complete blood count",
+      ...new Array(AD_OPTIONAL_HEADERS.length).fill(""),
+    ];
+
+    const csvPath = createTempCsv(headersWithoutCategory, [row]);
+
+    try {
+      // Select category from picker
+      await pickCategory(page, testCategoryTitle);
+
+      // Upload CSV without category_name column
+      await uploadCsvFile(page, csvPath);
+
+      // Should reach review with valid row
+      await expectReviewTable(page, { validCount: 1, totalCount: 1 });
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  test("should import using picker category without category_name column", async ({
+    page,
+    request,
+  }) => {
+    const prefix = Date.now();
+    const uniqueTitle = `AD ${prefix}: Picker Import Test`;
+
+    // Create headers without category_name
+    const headersWithoutCategory = AD_REQUIRED_HEADERS.filter(
+      (h) => h !== "category_name",
+    ).concat(AD_OPTIONAL_HEADERS);
+
+    const row = [
+      uniqueTitle,
+      "Test activity with picker category",
+      "Order test",
+      "laboratory",
+      // No category_name value
+      "http://snomed.info/sct",
+      "26604007",
+      "Complete blood count",
+      ...new Array(AD_OPTIONAL_HEADERS.length).fill(""),
+    ];
+
+    const csvPath = createTempCsv(headersWithoutCategory, [row]);
+
+    try {
+      // Select category from picker
+      await pickCategory(page, testCategoryTitle);
+
+      // Upload CSV without category_name column
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { validCount: 1, totalCount: 1 });
+
+      // Complete import
+      await clickImportButton(page);
+      await expectImportSuccess(page);
+
+      // Verify the imported activity definition exists in the database
+      const facility = getFacility();
+      const results = await fetchApiResults<{
+        title: string;
+        category?: { slug: string };
+      }>(request, "activity_definition/", {
+        facilityId: facility.id,
+        params: { title: uniqueTitle },
+      });
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].title).toBe(uniqueTitle);
+      // Verify the category from the picker was used
+      expect(results[0].category?.slug).toBe(testCategorySlug);
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  test("should import CSV with category_name column when picker category is selected (picker takes precedence)", async ({
+    page,
+    request,
+  }) => {
+    const prefix = Date.now();
+    const uniqueTitle = `AD ${prefix}: Picker Test`;
+
+    // Create CSV with a different category_name value
+    const row = [
+      uniqueTitle,
+      "Test activity to verify picker xeprecedence",
+      "Order test",
+      "laboratory",
+      "IgnoredCategory", // This should be ignored when picker is selected
+      "http://snomed.info/sct",
+      "26604007",
+      "Complete blood count",
+      ...new Array(AD_OPTIONAL_HEADERS.length).fill(""),
+    ];
+
+    const csvPath = createTempCsv(ALL_HEADERS, [row]);
+
+    try {
+      // Select category from picker
+      await pickCategory(page, testCategoryTitle);
+
+      // Upload CSV with category_name column
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { validCount: 1, totalCount: 1 });
+
+      // Complete import
+      await clickImportButton(page);
+      await expectImportSuccess(page);
+
+      // Verify the imported activity definition uses the picker category, not the CSV value
+      const facility = getFacility();
+      const results = await fetchApiResults<{
+        title: string;
+        category?: { slug: string };
+      }>(request, "activity_definition/", {
+        facilityId: facility.id,
+        params: { title: uniqueTitle },
+      });
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].title).toBe(uniqueTitle);
+      // Verify the picker category was used (not the CSV "IgnoredCategory")
+      expect(results[0].category?.slug).toBe(testCategorySlug);
     } finally {
       cleanupTempFile(csvPath);
     }

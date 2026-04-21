@@ -56,7 +56,7 @@ export function ImportFlow<
   disabledMessage,
   onBack: externalOnBack,
   onStepChange,
-  className = "max-w-4xl mx-auto",
+  className = "w-full mx-auto",
 }: ImportFlowProps<TRow, TCreated, TBefore, TPreCreate>) {
   const hasExternalRows = externalRows !== undefined;
   const needsExternalValidation =
@@ -122,7 +122,7 @@ export function ImportFlow<
   } = useImportMutation<TRow, TCreated, TBefore, TPreCreate>({
     createResource: config.createResource,
     beforeImport: config.beforeImport,
-    preCreate: config.preCreate,
+    preCreateUpdate: config.preCreateUpdate,
     postCreate: config.postCreate,
     afterImport: config.afterImport,
     checkExists: config.checkExists,

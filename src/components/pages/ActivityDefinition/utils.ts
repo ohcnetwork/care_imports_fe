@@ -43,7 +43,7 @@ export interface ActivityDefinitionCsvRow {
   body_site: Code | null;
   diagnostic_report_codes: Code[];
   derived_from_uri: string;
-  category_name: string;
+  category_name?: string;
   specimen_slugs: string[];
   observation_slugs: string[];
   charge_item_slugs: string[];
@@ -103,32 +103,45 @@ const CodeSchema = z.object({
   display: z.string().min(1, "Code display is required"),
 });
 
-export const ActivityDefinitionCsvRowSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  slug_value: z
-    .string()
-    .min(1, "Slug is required")
-    .regex(
-      /^[a-z0-9_-]+$/,
-      "Slug must contain only lowercase letters, digits, hyphens, and underscores",
-    ),
-  description: z.string().min(1, "Description is required"),
-  usage: z.string().min(1, "Usage is required"),
-  status: z.nativeEnum(Status),
-  classification: z.nativeEnum(Classification),
-  kind: z.nativeEnum(Kind),
-  code: CodeSchema,
-  body_site: CodeSchema.nullable(),
-  diagnostic_report_codes: z.array(CodeSchema),
-  derived_from_uri: z.string(),
-  category_name: z.string().min(1, "Category name is required"),
-  specimen_slugs: z.array(z.string()),
-  observation_slugs: z.array(z.string()),
-  charge_item_slugs: z.array(z.string()),
-  charge_item_price: z.string(),
-  location_names: z.array(z.string()),
-  healthcare_service_name: z.string(),
-});
+export const getActivityDefinitionCsvRowSchema = () =>
+  z
+    .object({
+      title: z.string().min(1, "Title is required"),
+      slug_value: z
+        .string()
+        .min(1, "Slug is required")
+        .regex(
+          /^[a-z0-9_-]+$/,
+          "Slug must contain only lowercase letters, digits, hyphens, and underscores",
+        ),
+      description: z.string().min(1, "Description is required"),
+      usage: z.string().min(1, "Usage is required"),
+      status: z.nativeEnum(Status),
+      classification: z.nativeEnum(Classification),
+      kind: z.nativeEnum(Kind),
+      code: CodeSchema,
+      body_site: CodeSchema.nullable(),
+      diagnostic_report_codes: z.array(CodeSchema),
+      derived_from_uri: z.string(),
+      category_name: z.string().optional(),
+      categorySlug: z.string().optional(),
+      specimen_slugs: z.array(z.string()),
+      observation_slugs: z.array(z.string()),
+      charge_item_slugs: z.array(z.string()),
+      charge_item_price: z.string(),
+      location_names: z.array(z.string()),
+      healthcare_service_name: z.string(),
+    })
+    .superRefine((data, ctx) => {
+      if (!data.category_name && !data.categorySlug) {
+        ctx.addIssue({
+          message:
+            "Either category_name or categorySlug must be provided. Pick category from dropdown or include category_name column in your csv.",
+          code: z.ZodIssueCode.custom,
+          path: ["category_name"],
+        });
+      }
+    });
 
 // ─── CSV Row Parser ───────────────────────────────────────────────
 
@@ -152,6 +165,7 @@ function buildOptionalCode(
 export function parseActivityDefinitionCsvRow(
   row: string[],
   headerIndices: Record<string, number>,
+  categorySlug?: string,
 ): Record<string, unknown> {
   const get = (key: string) => row[headerIndices[key]]?.trim() ?? "";
 
@@ -206,13 +220,15 @@ export function parseActivityDefinitionCsvRow(
     ),
     diagnostic_report_codes: diagnosticReportCodes,
     derived_from_uri: get("derived_from_uri"),
-    category_name: get("category_name"),
     specimen_slugs: splitCellValues(get("specimen_slugs")),
     observation_slugs: splitCellValues(get("observation_slugs")),
     charge_item_slugs: splitCellValues(get("charge_item_slugs")),
     charge_item_price: get("charge_item_price"),
     location_names: splitCellValues(get("location_names")),
     healthcare_service_name: get("healthcare_service_name"),
+    ...(categorySlug
+      ? { categorySlug }
+      : { category_name: get("category_name") }),
   };
 }
 
@@ -471,11 +487,16 @@ export function validateActivityDefinitionCsvRows(
 
 // ─── Review Columns ───────────────────────────────────────────────
 
-export const AD_CSV_REVIEW_COLUMNS: ReviewColumn<ActivityDefinitionCsvRow>[] = [
+export const getReviewColumns = (
+  categoryTitle?: string,
+): ReviewColumn<ActivityDefinitionCsvRow & { categoryTitle?: string }>[] => [
   { header: "Title", accessor: "title", width: "w-48" },
   { header: "Slug", accessor: "slug_value" },
   { header: "Classification", accessor: "classification" },
-  { header: "Category", accessor: "category_name" },
+  {
+    header: "Category",
+    accessor: categoryTitle ? "categoryTitle" : "category_name",
+  },
   { header: "Status", accessor: "status" },
 ];
 

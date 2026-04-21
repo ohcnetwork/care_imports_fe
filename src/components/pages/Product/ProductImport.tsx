@@ -333,7 +333,7 @@ function createProductImportConfig(
       return { pkCategoryMap, cidCategoryMap };
     },
 
-    preCreate: async (row, beforeResult) => {
+    preCreateUpdate: async (row, beforeResult) => {
       const { pkCategoryMap, cidCategoryMap } = beforeResult;
 
       // Resolve or create ProductKnowledge

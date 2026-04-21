@@ -103,3 +103,38 @@ export async function expectImportButtonCount(page: Page, count: number) {
     page.getByRole("button", { name: new RegExp(`^import ${count}`, "i") }),
   ).toBeVisible();
 }
+
+/**
+ * Pick a category from the ResourceCategoryPicker (e.g., for Activity Definition imports).
+ * Clicks the category picker combobox, searches for the category by title, and selects it.
+ */
+export async function pickCategory(page: Page, categoryTitle: string) {
+  // Click the category picker combobox trigger
+  await page
+    .getByRole("combobox")
+    .filter({ hasText: "Select a category" })
+    .click();
+
+  // Wait for the picker UI to be interactive
+  await expect(page.getByRole("option").first()).toBeVisible({
+    timeout: 5_000,
+  });
+
+  // Fill the search input to filter categories
+  await page.getByPlaceholder(/search.*categor/i).fill(categoryTitle);
+
+  // Wait for the matching category option to appear
+  await expect(
+    page.getByRole("option", { name: new RegExp(categoryTitle, "i") }),
+  ).toBeVisible({ timeout: 3_000 });
+
+  // Click the matching category option
+  await page
+    .getByRole("option", { name: new RegExp(categoryTitle, "i") })
+    .click();
+
+  // Verify selection is reflected in the combobox
+  await expect(
+    page.getByRole("combobox").filter({ hasText: categoryTitle }),
+  ).toBeVisible({ timeout: 3_000 });
+}

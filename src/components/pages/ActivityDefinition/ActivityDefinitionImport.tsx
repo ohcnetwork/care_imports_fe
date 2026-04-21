@@ -4,14 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HttpError, request } from "@/apis/request";
 import { ImportFlow } from "@/components/imports";
 import {
-  AD_CSV_REVIEW_COLUMNS,
   AD_HEADER_MAP,
   AD_REQUIRED_HEADERS,
   AD_REVIEW_COLUMNS,
   AD_SAMPLE_CSV,
-  ActivityDefinitionCsvRowSchema,
   applyHealthcareServiceMappings,
   createValidationCache,
+  getActivityDefinitionCsvRowSchema,
+  getReviewColumns,
   parseActivityDefinitionCsvRow,
   parseMasterCsvToRows,
   resolveReferences,
@@ -22,6 +22,7 @@ import {
   type ActivityDefinitionValidationCache,
 } from "@/components/pages/ActivityDefinition/utils";
 import MasterDataFileSelector from "@/components/shared/MasterDataFileSelector";
+import { ResourceCategoryPicker } from "@/components/shared/ResourceCategoryPicker";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,7 +42,11 @@ import {
 import { disableOverride } from "@/config";
 import { useMasterDataAvailability } from "@/hooks/useMasterDataAvailability";
 import type { ImportConfig, ProcessedRow } from "@/internalTypes/importConfig";
-import { ResourceCategoryResourceType } from "@/types/base/resourceCategory/resourceCategory";
+import {
+  ResourceCategoryRead,
+  ResourceCategoryResourceType,
+  ResourceCategorySubType,
+} from "@/types/base/resourceCategory/resourceCategory";
 import {
   Classification,
   Kind,
@@ -88,7 +93,7 @@ type ActiveView =
 /**
  * ActivityDefinition import page supporting both CSV upload and master data imports.
  *
- * CSV path: ImportFlow handles upload/parsing via schema → beforeImport/preCreate resolve references → import
+ * CSV path: ImportFlow handles upload/parsing via schema → beforeImport/preCreateUpdate resolve references → import
  * Master path: upload → master-select → resolving → mapping (if needed) → ImportFlow with processedRows
  */
 export default function ActivityDefinitionImport({
@@ -98,6 +103,9 @@ export default function ActivityDefinitionImport({
   const [categoryMappings, setCategoryMappings] = useState<
     Record<string, string>
   >({});
+  const [category, setCategory] = useState<ResourceCategoryRead | undefined>(
+    undefined,
+  );
 
   const { availability, files } = useMasterDataAvailability();
   const repoFileAvailable = availability["activity-definition"];
@@ -143,10 +151,13 @@ export default function ActivityDefinitionImport({
       ...createBaseConfig(),
 
       // Parsing
-      requiredHeaders: AD_REQUIRED_HEADERS,
+      requiredHeaders: AD_REQUIRED_HEADERS.filter(
+        (h) => !(category?.slug && h === "category_name"),
+      ),
       headerMap: AD_HEADER_MAP,
-      schema: ActivityDefinitionCsvRowSchema,
-      parseRow: parseActivityDefinitionCsvRow,
+      schema: getActivityDefinitionCsvRowSchema(),
+      parseRow: (row, headerIndices) =>
+        parseActivityDefinitionCsvRow(row, headerIndices, category?.slug),
 
       // Cross-row validation — also populates validationCacheRef with
       // location IDs and healthcare service IDs for preCreate to use.
@@ -167,7 +178,7 @@ export default function ActivityDefinitionImport({
         return validationCacheRef.current;
       },
 
-      preCreate: async (
+      preCreateUpdate: async (
         row: ActivityDefinitionCsvRow,
         cache: CsvBeforeResult,
       ) => {
@@ -199,8 +210,10 @@ export default function ActivityDefinitionImport({
         }
 
         // Resolve category (upsert with cache)
-        const categoryName = row.category_name.trim();
-        if (categoryName) {
+        const categoryName = row.category_name?.trim();
+        if (category?.slug) {
+          resolved.categorySlug = category.slug;
+        } else if (categoryName) {
           const normalizedCat = normalizeName(categoryName);
           if (!cache.categorySlugMap.has(normalizedCat)) {
             const catMap = await upsertResourceCategories({
@@ -227,10 +240,9 @@ export default function ActivityDefinitionImport({
         })(toActivityDefinitionDatapoint(adRow, facilityId));
       },
 
-      updateResource: async (existingSlug, row) => {
+      updateResource: async (existingSlug, row, resolved) => {
         if (!facilityId) return;
-        // For updates, we don't have preCreate result, build minimal resolved
-        const adRow = csvRowToActivityDefinitionRow(row);
+        const adRow = csvRowToActivityDefinitionRow(row, resolved);
         await mutate(activityDefinitionApi.updateActivityDefinition, {
           pathParams: {
             facilityId,
@@ -248,9 +260,9 @@ export default function ActivityDefinitionImport({
         "Existing items with same slug will be updated",
       ],
       sampleCsv: AD_SAMPLE_CSV,
-      reviewColumns: AD_CSV_REVIEW_COLUMNS,
+      reviewColumns: getReviewColumns(category?.title),
     };
-  }, [facilityId, createBaseConfig]);
+  }, [facilityId, category, createBaseConfig]);
 
   // ─── Master Import Config ─────────────────────────────────────────
   const masterImportConfig: ImportConfig<ActivityDefinitionRow> = useMemo(
@@ -355,14 +367,37 @@ export default function ActivityDefinitionImport({
             : ""
         }
       >
-        <ImportFlow
-          config={csvImportConfig}
-          disableUpload={disableManualUpload}
-          disabledMessage="Manual uploads are disabled because this build includes an activity definition dataset in the repository."
-          onStepChange={(step) =>
-            setActiveView({ kind: step === "upload" ? "upload" : "csv-flow" })
-          }
-        />
+        <div className="flex flex-col gap-2">
+          {showGrid && (
+            <>
+              <ResourceCategoryPicker
+                facilityId={facilityId || ""}
+                resourceType={ResourceCategoryResourceType.activity_definition}
+                resourceSubType={ResourceCategorySubType.other}
+                value={category?.slug}
+                onValueChange={(cat) => {
+                  setCategory(cat);
+                }}
+              />
+              <label className="text-xs text-gray-500">
+                (Optional) Select a category for the activity definitions being
+                imported. Do note that this will{" "}
+                <span className="font-semibold">
+                  override any category specified in the CSV
+                </span>
+                .
+              </label>
+            </>
+          )}
+          <ImportFlow
+            config={csvImportConfig}
+            disableUpload={disableManualUpload}
+            disabledMessage="Manual uploads are disabled because this build includes an activity definition dataset in the repository."
+            onStepChange={(step) =>
+              setActiveView({ kind: step === "upload" ? "upload" : "csv-flow" })
+            }
+          />
+        </div>
 
         {/* Master Data Card */}
         {showGrid && (
