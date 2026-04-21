@@ -12,6 +12,7 @@ import {
   toChargeItemCreatePayload,
   validateChargeItemRows,
 } from "@/components/pages/ChargeItemDefinition/utils";
+import { ResourceCategoryPicker } from "@/components/shared/ResourceCategoryPicker";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,6 +21,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import type { ImportConfig } from "@/internalTypes/importConfig";
 import {
   ResourceCategoryResourceType,
@@ -123,9 +125,12 @@ export default function ChargeItemDefinitionImport({
   facilityId,
 }: ChargeItemDefinitionImportProps) {
   const [categoryTitle, setCategoryTitle] = useState("");
-  const [categorySlug, setCategorySlug] = useState<string | null>(null);
+  const [categorySlug, setCategorySlug] = useState<string | undefined>(
+    undefined,
+  );
   const [isResolvingCategory, setIsResolvingCategory] = useState(false);
   const [categoryError, setCategoryError] = useState("");
+  const [screen, setScreen] = useState<"category" | "upload">("category");
 
   const config = useMemo(() => {
     if (!facilityId || !categorySlug) return null;
@@ -151,6 +156,7 @@ export default function ChargeItemDefinitionImport({
     setCategoryError("");
 
     try {
+      if (categorySlug) return; // Already resolved
       // Check if category already exists
       const existingCategories = await request(resourceCategoryApi.list, {
         pathParams: { facilityId },
@@ -190,6 +196,7 @@ export default function ChargeItemDefinitionImport({
       );
     } finally {
       setIsResolvingCategory(false);
+      setScreen("upload");
     }
   };
 
@@ -203,7 +210,7 @@ export default function ChargeItemDefinitionImport({
   };
 
   // Step 1: Category selection
-  if (!categorySlug) {
+  if (screen === "category") {
     return (
       <div className="max-w-4xl mx-auto">
         <Card>
@@ -217,12 +224,12 @@ export default function ChargeItemDefinitionImport({
               importing.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="flex flex-col gap-3">
             <div>
               <label className="text-sm font-medium text-gray-700">
                 Category Title
               </label>
-              <input
+              <Input
                 value={categoryTitle}
                 onChange={(e) => setCategoryTitle(e.target.value)}
                 className="mt-2 w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -230,17 +237,27 @@ export default function ChargeItemDefinitionImport({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") resolveCategory();
                 }}
+                disabled={!!categorySlug}
               />
               <p className="mt-1 text-xs text-gray-500">
                 If this category doesn&apos;t exist, it will be created
                 automatically.
               </p>
             </div>
-
+            OR
+            <ResourceCategoryPicker
+              facilityId={facilityId}
+              resourceType={ResourceCategoryResourceType.charge_item_definition}
+              resourceSubType={ResourceCategorySubType.other}
+              value={categorySlug}
+              onValueChange={(cat) => {
+                setCategoryTitle(cat?.title || "");
+                setCategorySlug(cat?.slug || "");
+              }}
+            />
             {categoryError && (
               <p className="text-sm text-red-600">{categoryError}</p>
             )}
-
             <div className="flex flex-row gap-2">
               <Button
                 onClick={resolveCategory}
@@ -273,8 +290,9 @@ export default function ChargeItemDefinitionImport({
             variant="outline"
             size="sm"
             onClick={() => {
-              setCategorySlug(null);
+              setCategorySlug(undefined);
               setCategoryTitle("");
+              setScreen("category");
             }}
           >
             Change
