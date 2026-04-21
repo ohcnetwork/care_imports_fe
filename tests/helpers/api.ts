@@ -78,24 +78,40 @@ export function getAuthHeaders(): Record<string, string> {
  * with `/api/v1/facility/{id}/`. For non-facility-scoped endpoints, omit it
  * and provide the full path (e.g. `/api/v1/product_knowledge/`).
  */
+interface FetchApiOptions {
+  facilityId?: string;
+  params?: Record<string, string>;
+}
+
+interface FetchRequest {
+  get: (
+    url: string,
+    options?: { headers?: Record<string, string> },
+  ) => Promise<{
+    ok: () => boolean;
+    json: () => Promise<unknown>;
+    status: () => number;
+    text: () => Promise<string>;
+  }>;
+}
+
+/** Fetch a paginated list endpoint — returns `T[]`. */
 export async function fetchApiResults<T = Record<string, unknown>>(
-  request: {
-    get: (
-      url: string,
-      options?: { headers?: Record<string, string> },
-    ) => Promise<{
-      ok: () => boolean;
-      json: () => Promise<unknown>;
-      status: () => number;
-      text: () => Promise<string>;
-    }>;
-  },
+  request: FetchRequest,
   path: string,
-  options: {
-    facilityId?: string;
-    params?: Record<string, string>;
-  } = {},
-): Promise<T[]> {
+  options?: FetchApiOptions & { paginated?: true },
+): Promise<T[]>;
+/** Fetch a single-object (retrieve) endpoint — returns `T`. */
+export async function fetchApiResults<T = Record<string, unknown>>(
+  request: FetchRequest,
+  path: string,
+  options: FetchApiOptions & { paginated: false },
+): Promise<T>;
+export async function fetchApiResults<T = Record<string, unknown>>(
+  request: FetchRequest,
+  path: string,
+  options: FetchApiOptions & { paginated?: boolean } = {},
+): Promise<T[] | T> {
   const apiUrl = getApiBaseUrl();
   const headers = getAuthHeaders();
 
@@ -117,6 +133,9 @@ export async function fetchApiResults<T = Record<string, unknown>>(
     );
   }
 
-  const data = (await response.json()) as { results: T[] };
-  return data.results;
+  const data = await response.json();
+  if (options.paginated === false) {
+    return data as T;
+  }
+  return (data as { results: T[] }).results;
 }

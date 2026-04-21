@@ -45,27 +45,49 @@ const AD_OPTIONAL_HEADERS = [
 
 const ALL_HEADERS = [...AD_REQUIRED_HEADERS, ...AD_OPTIONAL_HEADERS];
 
+type AdHeader =
+  | (typeof AD_REQUIRED_HEADERS)[number]
+  | (typeof AD_OPTIONAL_HEADERS)[number];
+
 test.use({ storageState: "tests/.auth/user.json" });
 
 // Module-level variables for test category (populated in beforeAll)
 let testCategorySlug: string;
 let testCategoryTitle: string;
+let testHealthcareServiceName: string;
 
 function makeValidAdRow(
   prefix: string | number,
-  categoryName = "TestCategory",
+  overrides: Partial<Record<AdHeader, string>> = {},
 ): string[] {
-  return [
-    `AD ${prefix}: Test Activity`, // title
-    "Test activity definition", // description
-    "Order test for evaluation", // usage
-    "laboratory", // classification
-    categoryName, // category_name
-    "http://snomed.info/sct", // code_system
-    "26604007", // code_value
-    "Complete blood count", // code_display
-    ...new Array(AD_OPTIONAL_HEADERS.length).fill(""),
-  ];
+  const defaults: Record<AdHeader, string> = {
+    title: `AD ${prefix}: Test Activity`,
+    description: "Test activity definition",
+    usage: "Order test for evaluation",
+    classification: "laboratory",
+    category_name: "TestCategory",
+    code_system: "http://snomed.info/sct",
+    code_value: "26604007",
+    code_display: "Complete blood count",
+    slug_value: "",
+    status: "",
+    kind: "",
+    body_site_system: "",
+    body_site_code: "",
+    body_site_display: "",
+    diagnostic_report_system: "",
+    diagnostic_report_code: "",
+    diagnostic_report_display: "",
+    derived_from_uri: "",
+    specimen_slugs: "",
+    observation_slugs: "",
+    charge_item_slugs: "",
+    charge_item_price: "",
+    location_names: "",
+    healthcare_service_name: "",
+  };
+  const merged = Object.assign({}, defaults, overrides);
+  return ALL_HEADERS.map((h) => merged[h as AdHeader]);
 }
 
 test.describe("Activity Definition Import", () => {
@@ -118,6 +140,25 @@ test.describe("Activity Definition Import", () => {
     const categoryData = await createResponse.json();
     testCategorySlug = categoryData.slug;
     console.log(`✅ Created test category: ${testCategoryTitle}`);
+  });
+
+  test.beforeAll(async ({ request }) => {
+    // Fetch an existing healthcare service (fixtures ensure at least one exists)
+    const facility = getFacility();
+    const services = await fetchApiResults<{ id: string; name: string }>(
+      request,
+      "healthcare_service/",
+      { facilityId: facility.id },
+    );
+    if (services.length === 0) {
+      throw new Error(
+        "No healthcare services found — fixtures should provide at least one",
+      );
+    }
+    testHealthcareServiceName = services[0].name;
+    console.log(
+      `ℹ️ Using existing healthcare service: ${testHealthcareServiceName}`,
+    );
   });
 
   test.beforeEach(async ({ page }) => {
@@ -261,9 +302,9 @@ test.describe("Activity Definition Import", () => {
   });
 
   test("should show error for invalid slug format", async ({ page }) => {
-    const row = makeValidAdRow("slug-test");
-    // Set slug_value (first optional header) to invalid value
-    row[AD_REQUIRED_HEADERS.length] = "INVALID SLUG WITH SPACES";
+    const row = makeValidAdRow("slug-test", {
+      slug_value: "INVALID SLUG WITH SPACES",
+    });
 
     const csvPath = createTempCsv(ALL_HEADERS, [row]);
 
@@ -317,11 +358,9 @@ test.describe("Activity Definition Import", () => {
     page,
   }) => {
     const prefix = Date.now();
-    const row = makeValidAdRow(prefix);
-    const specimenIndex =
-      AD_REQUIRED_HEADERS.length +
-      AD_OPTIONAL_HEADERS.indexOf("specimen_slugs");
-    row[specimenIndex] = "nonexistent-specimen-slug";
+    const row = makeValidAdRow(prefix, {
+      specimen_slugs: "nonexistent-specimen-slug",
+    });
 
     const csvPath = createTempCsv(ALL_HEADERS, [row]);
 
@@ -338,11 +377,9 @@ test.describe("Activity Definition Import", () => {
     page,
   }) => {
     const prefix = Date.now();
-    const row = makeValidAdRow(prefix);
-    const observationIndex =
-      AD_REQUIRED_HEADERS.length +
-      AD_OPTIONAL_HEADERS.indexOf("observation_slugs");
-    row[observationIndex] = "nonexistent-observation-slug";
+    const row = makeValidAdRow(prefix, {
+      observation_slugs: "nonexistent-observation-slug",
+    });
 
     const csvPath = createTempCsv(ALL_HEADERS, [row]);
 
@@ -359,11 +396,9 @@ test.describe("Activity Definition Import", () => {
     page,
   }) => {
     const prefix = Date.now();
-    const row = makeValidAdRow(prefix);
-    const chargeItemIndex =
-      AD_REQUIRED_HEADERS.length +
-      AD_OPTIONAL_HEADERS.indexOf("charge_item_slugs");
-    row[chargeItemIndex] = "nonexistent-charge-item-slug";
+    const row = makeValidAdRow(prefix, {
+      charge_item_slugs: "nonexistent-charge-item-slug",
+    });
 
     const csvPath = createTempCsv(ALL_HEADERS, [row]);
 
@@ -380,11 +415,9 @@ test.describe("Activity Definition Import", () => {
     page,
   }) => {
     const prefix = Date.now();
-    const row = makeValidAdRow(prefix);
-    const locationIndex =
-      AD_REQUIRED_HEADERS.length +
-      AD_OPTIONAL_HEADERS.indexOf("location_names");
-    row[locationIndex] = "Nonexistent Location XYZ";
+    const row = makeValidAdRow(prefix, {
+      location_names: "Nonexistent Location XYZ",
+    });
 
     const csvPath = createTempCsv(ALL_HEADERS, [row]);
 
@@ -401,11 +434,9 @@ test.describe("Activity Definition Import", () => {
     page,
   }) => {
     const prefix = Date.now();
-    const row = makeValidAdRow(prefix);
-    const hsIndex =
-      AD_REQUIRED_HEADERS.length +
-      AD_OPTIONAL_HEADERS.indexOf("healthcare_service_name");
-    row[hsIndex] = "Nonexistent Healthcare Service";
+    const row = makeValidAdRow(prefix, {
+      healthcare_service_name: "Nonexistent Healthcare Service",
+    });
 
     const csvPath = createTempCsv(ALL_HEADERS, [row]);
 
@@ -413,6 +444,46 @@ test.describe("Activity Definition Import", () => {
       await uploadCsvFile(page, csvPath);
       await expectReviewTable(page, { invalidCount: 1, totalCount: 1 });
       await expectValidationError(page, /healthcare service not found/i);
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  test("should import with valid healthcare service and verify via API", async ({
+    page,
+    request,
+  }) => {
+    const prefix = Date.now();
+    const uniqueTitle = `AD ${prefix}: Test Activity`;
+    const row = makeValidAdRow(prefix, {
+      slug_value: `ad-${prefix}-test-activity`,
+      healthcare_service_name: testHealthcareServiceName,
+    });
+
+    const csvPath = createTempCsv(ALL_HEADERS, [row]);
+
+    try {
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { validCount: 1, totalCount: 1 });
+      await clickImportButton(page);
+      await expectImportSuccess(page);
+
+      // Verify the imported AD has the healthcare service linked
+      const facility = getFacility();
+      const results = await fetchApiResults<{
+        title: string;
+        healthcare_service?: { name: string };
+      }>(
+        request,
+        `activity_definition/f-${facility.id}-ad-${prefix}-test-activity`,
+        {
+          facilityId: facility.id,
+          paginated: false,
+        },
+      );
+      expect(results).toBeDefined();
+      expect(results.title).toBe(uniqueTitle);
+      expect(results.healthcare_service?.name).toBe(testHealthcareServiceName);
     } finally {
       cleanupTempFile(csvPath);
     }

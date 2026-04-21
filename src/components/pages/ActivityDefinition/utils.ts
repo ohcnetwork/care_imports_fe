@@ -9,7 +9,6 @@ import {
   Status,
 } from "@/types/emr/activityDefinition/activityDefinition";
 import {
-  ActivityDefinitionProcessedRow,
   type HealthcareServiceOption,
   type ResolvedRow,
   stripMappingErrors,
@@ -320,7 +319,7 @@ export async function validateActivityDefinitionCsvRowsAsync(
     ...Array.from(allSpecimenSlugs).map(async (slug) => {
       try {
         await request(specimenDefinitionApi.retrieveSpecimenDefinition, {
-          pathParams: { facilityId, slug: `f-${facilityId}-${slug}` },
+          pathParams: { facilityId, specimenSlug: `f-${facilityId}-${slug}` },
         });
         specimenResults.set(slug, true);
       } catch {
@@ -373,7 +372,7 @@ export async function validateActivityDefinitionCsvRowsAsync(
       if (allLocationNames.size === 0) return;
       try {
         const response = await request(locationApi.list, {
-          pathParams: { facilityId },
+          pathParams: { facility_id: facilityId },
           queryParams: { limit: 500 },
         });
         const locationsByName = new Map(
@@ -541,9 +540,6 @@ export type ActivityDefinitionRow = ActivityDefinitionProcessedRow["data"] & {
   resolved?: ResolvedRow;
 };
 
-export type ActivityDefinitionProcessedRowWithResolved =
-  ProcessedRow<ActivityDefinitionRow>;
-
 // ─── Parse ────────────────────────────────────────────────────────────────────
 
 /**
@@ -611,7 +607,7 @@ export async function resolveReferences(
     row.data.location_names.forEach((name: string) =>
       uniqueLocations.add(name),
     );
-    if (row.data.category_name.trim()) {
+    if (row.data.category_name?.trim()) {
       categoryNames.push(row.data.category_name);
     }
   });
@@ -720,8 +716,9 @@ export async function resolveReferences(
       observationSlugs: [],
       chargeItemSlugs: [],
       locationIds: [],
-      categorySlug:
-        categorySlugMap.get(normalizeName(row.data.category_name)) ?? "",
+      categorySlug: row.data?.category_name
+        ? categorySlugMap.get(normalizeName(row.data?.category_name))
+        : "",
       healthcareServiceId: null,
     };
 
@@ -784,19 +781,20 @@ export async function resolveReferences(
 
 /**
  * Apply healthcare service selections from the mapping UI to the rows.
- * Maps category_name → healthcareServiceId via the categoryMappings record.
+ * Maps healthcare_service_name → healthcareServiceId via the provided mappings.
  */
 export function applyHealthcareServiceMappings(
   rows: ProcessedRow<ActivityDefinitionRow>[],
-  categoryMappings: Record<string, string>,
+  healthcareServiceMappings: Record<string, string>,
 ): ProcessedRow<ActivityDefinitionRow>[] {
   return rows.map((row) => {
-    const healthcareServiceId =
-      categoryMappings[row.data.category_name] ?? null;
+    const healthcareServiceId = row.data?.healthcare_service_name
+      ? healthcareServiceMappings[row.data.healthcare_service_name]
+      : null;
     const updatedErrors = stripMappingErrors(row.errors);
     if (!healthcareServiceId) {
       updatedErrors.push(
-        `Healthcare service not found: ${row.data.category_name}`,
+        `Healthcare service not found: ${row.data.healthcare_service_name}`,
       );
     }
     return {
@@ -865,3 +863,8 @@ export const AD_REVIEW_COLUMNS: ReviewColumn<ActivityDefinitionRow>[] = [
   { header: "Classification", accessor: (row) => row.classification ?? "" },
   { header: "Status", accessor: (row) => row.status ?? "" },
 ];
+export type ActivityDefinitionProcessedRow = {
+  rowIndex: number;
+  data: ActivityDefinitionCsvRow;
+  errors: string[];
+};

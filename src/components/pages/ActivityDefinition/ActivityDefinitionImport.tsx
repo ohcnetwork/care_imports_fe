@@ -305,7 +305,7 @@ export default function ActivityDefinitionImport({
             const activityCategories = Array.from(
               new Set(
                 resolvedRows
-                  .map((r) => r.data.category_name.trim())
+                  .map((r) => r.data.category_name?.trim() ?? "")
                   .filter(Boolean),
               ),
             ).sort();
@@ -389,6 +389,7 @@ export default function ActivityDefinitionImport({
               </label>
             </>
           )}
+
           <ImportFlow
             config={csvImportConfig}
             disableUpload={disableManualUpload}
@@ -601,14 +602,14 @@ function csvRowToActivityDefinitionRow(
     code: row.code,
     body_site: row.body_site,
     diagnostic_report_codes: row.diagnostic_report_codes,
-    derived_from_uri: row.derived_from_uri || undefined,
+    derived_from_uri: row.derived_from_uri || "",
     category_name: row.category_name,
     specimen_slugs: row.specimen_slugs,
     observation_slugs: row.observation_slugs,
     charge_item_slugs: row.charge_item_slugs,
-    charge_item_price: row.charge_item_price || undefined,
+    charge_item_price: row.charge_item_price || "",
     location_names: row.location_names,
-    healthcare_service_name: row.healthcare_service_name || undefined,
+    healthcare_service_name: row.healthcare_service_name || "",
     resolved,
   };
 }

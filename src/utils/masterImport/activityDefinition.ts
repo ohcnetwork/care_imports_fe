@@ -1,8 +1,10 @@
-import { ActivityDefinitionRow } from "@/components/pages/ActivityDefinition/utils";
+import {
+  ActivityDefinitionProcessedRow,
+  ActivityDefinitionRow,
+} from "@/components/pages/ActivityDefinition/utils";
 import type { Code } from "@/types/base/code/code";
 import { parseCsvText } from "@/Utils/csv";
 import { isUrlSafeSlug } from "@/Utils/slug";
-import { ActivityDefinitionProcessedRow } from "../activityDefinitionHelper";
 
 const REQUIRED_HEADERS = [
   "title",
@@ -229,7 +231,7 @@ export const parseActivityDefinitionCsv = (
       charge_item_slugs: splitCellValues(
         getCellValue(row, headerMap, "charge_item_slugs").trim(),
       ),
-      charge_item_price: chargeItemPrice || undefined,
+      charge_item_price: chargeItemPrice,
       location_names: splitCellValues(
         getCellValue(row, headerMap, "location_names").trim(),
       ),

@@ -1,5 +1,4 @@
 import { csvEscape } from "@/Utils/importHelpers";
-import { ActivityDefinitionRow } from "./masterImport/activityDefinition";
 
 export interface ResolvedRow {
   categorySlug?: string;
@@ -9,12 +8,6 @@ export interface ResolvedRow {
   locationIds: string[];
   healthcareServiceId?: string | null;
 }
-
-export type ActivityDefinitionProcessedRow = {
-  rowIndex: number;
-  data: ActivityDefinitionRow;
-  errors: string[];
-};
 
 export interface HealthcareServiceOption {
   id: string;
