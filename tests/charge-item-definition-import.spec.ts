@@ -1,13 +1,13 @@
-import { test, expect, Page } from "@playwright/test";
+import { expect, Page, test } from "@playwright/test";
 import { fetchApiResults, getApiBaseUrl, getAuthHeaders } from "./helpers/api";
-import { createTempCsv, uploadCsvFile, cleanupTempFile } from "./helpers/csv";
+import { cleanupTempFile, createTempCsv, uploadCsvFile } from "./helpers/csv";
 import {
-  downloadSampleCsv,
-  expectReviewTable,
   clickImportButton,
+  downloadSampleCsv,
   expectImportSuccess,
-  expectValidationError,
+  expectReviewTable,
   expectUploadError,
+  expectValidationError,
   pickCategory,
 } from "./helpers/import-flow";
 import { goToImport } from "./helpers/navigation";
@@ -287,11 +287,13 @@ test.describe("Charge Item Definition Import", () => {
 
       // Verify the imported charge item definition exists
       const facility = getFacility();
-      const results = await fetchApiResults<{ title: string; category?: { slug: string } }>(
-        request,
-        "charge_item_definition/",
-        { facilityId: facility.id, params: { title: uniqueTitle } },
-      );
+      const results = await fetchApiResults<{
+        title: string;
+        category?: { slug: string };
+      }>(request, "charge_item_definition/", {
+        facilityId: facility.id,
+        params: { title: uniqueTitle },
+      });
       expect(results.length).toBeGreaterThan(0);
       expect(results[0].title).toBe(uniqueTitle);
       expect(results[0].category?.slug).toBe(testCategorySlug);
@@ -305,13 +307,7 @@ test.describe("Charge Item Definition Import", () => {
     // Create CSV with a fixed slug for re-import testing
     const csvPath = createTempCsv(
       ["title", "slug_value", "price"],
-      [
-        [
-          `Re-import Test Item ${suffix}`,
-          `re-import-test-${suffix}`,
-          "100",
-        ],
-      ],
+      [[`Re-import Test Item ${suffix}`, `re-import-test-${suffix}`, "100"]],
     );
 
     try {
