@@ -488,13 +488,13 @@ export function validateActivityDefinitionCsvRows(
 
 export const getReviewColumns = (
   categoryTitle?: string,
-): ReviewColumn<ActivityDefinitionCsvRow & { categoryTitle?: string }>[] => [
+): ReviewColumn<ActivityDefinitionCsvRow>[] => [
   { header: "Title", accessor: "title", width: "w-48" },
   { header: "Slug", accessor: "slug_value" },
   { header: "Classification", accessor: "classification" },
   {
     header: "Category",
-    accessor: categoryTitle ? "categoryTitle" : "category_name",
+    accessor: categoryTitle ? () => categoryTitle : "category_name",
   },
   { header: "Status", accessor: "status" },
 ];

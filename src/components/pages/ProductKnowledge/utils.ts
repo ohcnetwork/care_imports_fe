@@ -1,4 +1,5 @@
 import { normalizeHeader, SlugSchema } from "@/internalTypes/common";
+import { ReviewColumn } from "@/internalTypes/importConfig";
 import {
   ProductKnowledgeCreate,
   ProductKnowledgeStatus,
@@ -62,36 +63,52 @@ export const PK_HEADER_MAP: Record<string, string> = PK_ALL_HEADERS.reduce(
 );
 
 // ─── Zod Schema ────────────────────────────────────────────────────
-export const ProductKnowledgeRowSchema = z.object({
-  // Required fields
-  resourceCategory: z.string().min(1, "Resource category is required"),
-  slug: SlugSchema,
-  name: z.string().min(1, "Name is required"),
-  productType: z.nativeEnum(ProductKnowledgeType),
-  baseUnitDisplay: z
-    .string()
-    .min(1, "Base unit is required")
-    .refine(
-      (display) =>
-        DOSAGE_UNITS_CODES.some(
-          (u) => u.display.toLowerCase() === display.toLowerCase(),
-        ),
-      (display) => ({
-        message: `Could not resolve base unit for '${display}'. Valid units: ${DOSAGE_UNITS_CODES.map((u) => u.display).join(", ")}`,
-      }),
-    ),
+export const ProductKnowledgeRowSchema = z
+  .object({
+    // Required fields
+    resourceCategory: z.string().optional(), // Used when category is provided in csv
+    categorySlug: z.string().optional(), // Used when category is provided by picker
+    slug: SlugSchema,
+    name: z.string().min(1, "Name is required"),
+    productType: z.nativeEnum(ProductKnowledgeType),
+    baseUnitDisplay: z
+      .string()
+      .min(1, "Base unit is required")
+      .refine(
+        (display) =>
+          DOSAGE_UNITS_CODES.some(
+            (u) => u.display.toLowerCase() === display.toLowerCase(),
+          ),
+        (display) => ({
+          message: `Could not resolve base unit for '${display}'. Valid units: ${DOSAGE_UNITS_CODES.map((u) => u.display).join(", ")}`,
+        }),
+      ),
 
-  // Optional fields
-  codeDisplay: z.string().optional(),
-  codeValue: z.string().optional(),
-  dosageFormDisplay: z.string().optional(),
-  dosageFormCode: z.string().optional(),
-  routeCode: z.string().optional(),
-  routeDisplay: z.string().optional(),
-  alternateIdentifier: z.string().optional(),
-  alternateNameType: z.nativeEnum(ProductNameTypes).optional(),
-  alternateNameValue: z.string().optional(),
-});
+    // Optional fields
+    codeDisplay: z.string().optional(),
+    codeValue: z.string().optional(),
+    dosageFormDisplay: z.string().optional(),
+    dosageFormCode: z.string().optional(),
+    routeCode: z.string().optional(),
+    routeDisplay: z.string().optional(),
+    alternateIdentifier: z.string().optional(),
+    alternateNameType: z.nativeEnum(ProductNameTypes).optional(),
+    alternateNameValue: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.resourceCategory && !data.categorySlug) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Either resourceCategory (in csv) or categorySlug (from picker) must be provided",
+      });
+    }
+  });
+
+/** Schema variant where resourceCategory is optional (when picker provides it). */
+export const getProductKnowledgeRowSchema = () => {
+  return ProductKnowledgeRowSchema;
+};
 
 export type ProductKnowledgeRow = z.infer<typeof ProductKnowledgeRowSchema>;
 
@@ -234,17 +251,37 @@ export function validateProductKnowledgeRows(
 export function parseProductKnowledgeRow(
   row: string[],
   headerIndices: Record<string, number>,
+  categorySlug?: string,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
   for (const header of PK_ALL_HEADERS) {
     const idx = headerIndices[header];
     const value = idx !== undefined ? (row[idx]?.trim() ?? "") : "";
-    result[header] = value === "" && !(PK_REQUIRED_HEADERS as readonly string[]).includes(header) ? undefined : value;
+    result[header] =
+      value === "" &&
+      !(PK_REQUIRED_HEADERS as readonly string[]).includes(header)
+        ? undefined
+        : value;
   }
-
+  if (categorySlug) {
+    delete result.resourceCategory; // Remove resourceCategory if categorySlug is provided
+    result.categorySlug = categorySlug;
+  }
   return result;
 }
+
+export const getReviewColumns = (
+  categoryTitle?: string,
+): ReviewColumn<ProductKnowledgeRow>[] => [
+  { header: "Name", accessor: "name", width: "w-48" },
+  { header: "Type", accessor: "productType" },
+  {
+    header: "Category",
+    accessor: categoryTitle ? () => categoryTitle : "resourceCategory",
+  },
+  { header: "Slug", accessor: "slug" },
+];
 
 // ─── Sample CSV ─────────────────────────────────────────────────────
 export const PK_SAMPLE_CSV = {

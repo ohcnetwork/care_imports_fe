@@ -378,6 +378,7 @@ export default function ActivityDefinitionImport({
                 onValueChange={(cat) => {
                   setCategory(cat);
                 }}
+                placeholder="Select a category (optional, overrides CSV)"
               />
               <label className="text-xs text-gray-500">
                 (Optional) Select a category for the activity definitions being

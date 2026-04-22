@@ -7,13 +7,15 @@ import {
   PK_HEADER_MAP,
   PK_REQUIRED_HEADERS,
   PK_SAMPLE_CSV,
-  ProductKnowledgeRowSchema,
+  getProductKnowledgeRowSchema,
+  getReviewColumns,
   parseProductKnowledgeRow,
   toProductKnowledgeCreatePayload,
   validateProductKnowledgeRows,
   type ProductKnowledgeRow,
 } from "@/components/pages/ProductKnowledge/utils";
 import MasterDataFileSelector from "@/components/shared/MasterDataFileSelector";
+import { ResourceCategoryPicker } from "@/components/shared/ResourceCategoryPicker";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,7 +27,11 @@ import {
 import { disableOverride } from "@/config";
 import { useMasterDataAvailability } from "@/hooks/useMasterDataAvailability";
 import type { ImportConfig, ProcessedRow } from "@/internalTypes/importConfig";
-import { ResourceCategoryResourceType } from "@/types/base/resourceCategory/resourceCategory";
+import {
+  ResourceCategoryRead,
+  ResourceCategoryResourceType,
+  ResourceCategorySubType,
+} from "@/types/base/resourceCategory/resourceCategory";
 import productKnowledgeApi from "@/types/inventory/productKnowledge/productKnowledgeApi";
 import { parseCsvToProcessedRows } from "@/Utils/csv";
 import { mutate } from "@/Utils/request/mutate";
@@ -60,6 +66,9 @@ export default function ProductKnowledgeImportNew({
   facilityId,
 }: ProductKnowledgeImportNewProps) {
   const [activeView, setActiveView] = useState<ActiveView>({ kind: "upload" });
+  const [category, setCategory] = useState<ResourceCategoryRead | undefined>(
+    undefined,
+  );
 
   const { files, availability } = useMasterDataAvailability();
   const pkFiles = files["product-knowledge"] ?? [];
@@ -108,18 +117,24 @@ export default function ProductKnowledgeImportNew({
       createResource: async (row) => {
         if (!facilityId) throw new Error("Facility ID is required");
 
-        if (!categorySlugMap.has(normalizeCategory(row.resourceCategory))) {
-          const newMap = await upsertResourceCategories({
-            facilityId,
-            categories: [row.resourceCategory],
-            resourceType: ResourceCategoryResourceType.product_knowledge,
-            slugPrefix: "pk",
-          });
-          newMap.forEach((slug, key) => categorySlugMap.set(key, slug));
-        }
+        let categorySlug: string = "";
 
-        const categorySlug =
-          categorySlugMap.get(normalizeCategory(row.resourceCategory)) ?? "";
+        if (category?.slug) {
+          // Picker category takes precedence
+          categorySlug = category.slug;
+        } else if (row.resourceCategory) {
+          if (!categorySlugMap.has(normalizeCategory(row.resourceCategory))) {
+            const newMap = await upsertResourceCategories({
+              facilityId,
+              categories: [row.resourceCategory],
+              resourceType: ResourceCategoryResourceType.product_knowledge,
+              slugPrefix: "pk",
+            });
+            newMap.forEach((slug, key) => categorySlugMap.set(key, slug));
+          }
+          categorySlug =
+            categorySlugMap.get(normalizeCategory(row.resourceCategory)) ?? "";
+        }
 
         const payload = toProductKnowledgeCreatePayload(
           row,
@@ -132,18 +147,23 @@ export default function ProductKnowledgeImportNew({
       updateResource: async (_id, row) => {
         if (!facilityId) throw new Error("Facility ID is required");
 
-        if (!categorySlugMap.has(normalizeCategory(row.resourceCategory))) {
-          const newMap = await upsertResourceCategories({
-            facilityId,
-            categories: [row.resourceCategory],
-            resourceType: ResourceCategoryResourceType.product_knowledge,
-            slugPrefix: "pk",
-          });
-          newMap.forEach((slug, key) => categorySlugMap.set(key, slug));
-        }
+        let categorySlug: string = "";
 
-        const categorySlug =
-          categorySlugMap.get(normalizeCategory(row.resourceCategory)) ?? "";
+        if (category?.slug) {
+          categorySlug = category.slug;
+        } else if (row?.resourceCategory) {
+          if (!categorySlugMap.has(normalizeCategory(row.resourceCategory))) {
+            const newMap = await upsertResourceCategories({
+              facilityId,
+              categories: [row.resourceCategory],
+              resourceType: ResourceCategoryResourceType.product_knowledge,
+              slugPrefix: "pk",
+            });
+            newMap.forEach((slug, key) => categorySlugMap.set(key, slug));
+          }
+          categorySlug =
+            categorySlugMap.get(normalizeCategory(row.resourceCategory)) ?? "";
+        }
 
         const payload = toProductKnowledgeCreatePayload(
           row,
@@ -161,7 +181,7 @@ export default function ProductKnowledgeImportNew({
     };
 
     return base;
-  }, [facilityId]);
+  }, [facilityId, category]);
 
   // ─── CSV Import Config ───────────────────────────────────────────
   const csvImportConfig: ImportConfig<ProductKnowledgeRow, { slug: string }> =
@@ -170,10 +190,13 @@ export default function ProductKnowledgeImportNew({
         ...createBaseConfig(),
 
         // Parsing
-        requiredHeaders: PK_REQUIRED_HEADERS,
+        requiredHeaders: PK_REQUIRED_HEADERS.filter(
+          (h) => !(category?.slug && h === "resourceCategory"),
+        ),
         headerMap: PK_HEADER_MAP,
-        schema: ProductKnowledgeRowSchema,
-        parseRow: parseProductKnowledgeRow,
+        schema: getProductKnowledgeRowSchema(),
+        parseRow: (row: string[], headerIndices: Record<string, number>) =>
+          parseProductKnowledgeRow(row, headerIndices, category?.slug),
 
         // UI
         description: "Upload a CSV file to import product knowledge entries.",
@@ -184,14 +207,9 @@ export default function ProductKnowledgeImportNew({
         ],
         sampleCsv: PK_SAMPLE_CSV,
 
-        reviewColumns: [
-          { header: "Name", accessor: "name", width: "w-48" },
-          { header: "Type", accessor: "productType" },
-          { header: "Category", accessor: "resourceCategory" },
-          { header: "Slug", accessor: "slug" },
-        ],
+        reviewColumns: getReviewColumns(category?.title),
       };
-    }, [createBaseConfig]);
+    }, [createBaseConfig, category]);
 
   // ─── Master Import Config ────────────────────────────────────────
   const masterImportConfig: ImportConfig<
@@ -234,15 +252,36 @@ export default function ProductKnowledgeImportNew({
             : ""
         }
       >
-        {/* CSV Upload Card */}
-        <ImportFlow
-          config={csvImportConfig}
-          disableUpload={disableManualUpload}
-          disabledMessage="Manual uploads are disabled because this build includes a product knowledge dataset in the repository."
-          onStepChange={(step) =>
-            setActiveView({ kind: step === "upload" ? "upload" : "csv-flow" })
-          }
-        />
+        <div className="flex flex-col gap-2">
+          {facilityId && showGrid && (
+            <>
+              <ResourceCategoryPicker
+                facilityId={facilityId || ""}
+                resourceType={ResourceCategoryResourceType.product_knowledge}
+                resourceSubType={ResourceCategorySubType.other}
+                value={category?.slug}
+                onValueChange={(cat) => setCategory(cat)}
+                placeholder="Select a category (optional, overrides CSV)"
+              />
+              <label className="text-xs text-gray-500">
+                (Optional) Select a category for the product knowledges being
+                imported. Do note that this will{" "}
+                <span className="font-semibold">
+                  override any category specified in the CSV
+                </span>
+                .
+              </label>
+            </>
+          )}
+          <ImportFlow
+            config={csvImportConfig}
+            disableUpload={disableManualUpload}
+            disabledMessage="Manual uploads are disabled because this build includes a product knowledge dataset in the repository."
+            onStepChange={(step) =>
+              setActiveView({ kind: step === "upload" ? "upload" : "csv-flow" })
+            }
+          />
+        </div>
 
         {/* Master Data Card */}
         {showGrid && (

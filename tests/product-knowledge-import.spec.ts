@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { fetchApiResults, getApiBaseUrl, getAuthHeaders } from "./helpers/api";
 import { cleanupTempFile, createTempCsv, uploadCsvFile } from "./helpers/csv";
 import {
   clickImportButton,
@@ -7,6 +8,7 @@ import {
   expectReviewTable,
   expectUploadError,
   expectValidationError,
+  pickCategory,
 } from "./helpers/import-flow";
 import {
   clickMasterDataBack,
@@ -15,10 +17,117 @@ import {
   selectFirstMasterFile,
 } from "./helpers/master-data";
 import { goToImport } from "./helpers/navigation";
+import { getFacility } from "./utils/facility";
+
+const PK_REQUIRED_HEADERS = [
+  "resourceCategory",
+  "slug",
+  "name",
+  "productType",
+  "baseUnitDisplay",
+] as const;
+
+const PK_OPTIONAL_HEADERS = [
+  "codeDisplay",
+  "codeValue",
+  "dosageFormDisplay",
+  "dosageFormCode",
+  "routeCode",
+  "routeDisplay",
+  "alternateIdentifier",
+  "alternateNameType",
+  "alternateNameValue",
+] as const;
+
+const ALL_HEADERS = [...PK_REQUIRED_HEADERS, ...PK_OPTIONAL_HEADERS];
+
+type PkHeader =
+  | (typeof PK_REQUIRED_HEADERS)[number]
+  | (typeof PK_OPTIONAL_HEADERS)[number];
+
+function makeValidPkRow(
+  suffix: string | number,
+  overrides: Partial<Record<PkHeader, string>> = {},
+): string[] {
+  const defaults: Record<PkHeader, string> = {
+    resourceCategory: "Medication",
+    slug: `test-pk-${suffix}`,
+    name: `Test PK ${suffix}`,
+    productType: "medication",
+    baseUnitDisplay: "tablets",
+    codeDisplay: "",
+    codeValue: "",
+    dosageFormDisplay: "",
+    dosageFormCode: "",
+    routeCode: "",
+    routeDisplay: "",
+    alternateIdentifier: "",
+    alternateNameType: "",
+    alternateNameValue: "",
+  };
+  const merged = Object.assign({}, defaults, overrides);
+  return ALL_HEADERS.map((h) => merged[h as PkHeader]);
+}
 
 test.use({ storageState: "tests/.auth/user.json" });
 
+// Module-level variables for test category (populated in beforeAll)
+let testCategorySlug: string;
+let testCategoryTitle: string;
+let facility: { id: string; name: string };
+
 test.describe("Product Knowledge Import", () => {
+  test.beforeAll(async ({ request }) => {
+    // Bootstrap test category or reuse existing one
+    facility = getFacility();
+    const apiUrl = getApiBaseUrl();
+    const headers = getAuthHeaders();
+
+    // List existing categories
+    try {
+      const categories = await fetchApiResults<{ slug: string; title: string }>(
+        request,
+        `resource_category/`,
+        {
+          facilityId: facility.id,
+          params: { resource_type: "product_knowledge" },
+        },
+      );
+      if (categories.length > 0) {
+        testCategorySlug = categories[0].slug;
+        testCategoryTitle = categories[0].title;
+        console.log(`ℹ️ Using existing PK test category: ${testCategoryTitle}`);
+        return;
+      }
+    } catch {
+      // No existing categories, create one below
+    }
+
+    // Create a new test category
+    testCategoryTitle = `PK Test Category ${Date.now()}`;
+    const createResponse = await request.post(
+      `${apiUrl}/api/v1/facility/${facility.id}/resource_category/`,
+      {
+        headers,
+        data: {
+          title: testCategoryTitle,
+          resource_type: "product_knowledge",
+          resource_sub_type: "other",
+        },
+      },
+    );
+
+    if (!createResponse.ok()) {
+      throw new Error(
+        `Failed to create PK test category: ${createResponse.status()} ${await createResponse.text()}`,
+      );
+    }
+
+    const categoryData = await createResponse.json();
+    testCategorySlug = categoryData.slug;
+    console.log(`✅ Created PK test category: ${testCategoryTitle}`);
+  });
+
   test.beforeEach(async ({ page }) => {
     await goToImport(page, "product-knowledge");
   });
@@ -49,42 +158,7 @@ test.describe("Product Knowledge Import", () => {
 
   test("should upload valid CSV and import", async ({ page }) => {
     const suffix = Date.now();
-    const csvPath = createTempCsv(
-      [
-        "resourceCategory",
-        "slug",
-        "name",
-        "productType",
-        "codeDisplay",
-        "codeValue",
-        "baseUnitDisplay",
-        "dosageFormDisplay",
-        "dosageFormCode",
-        "routeCode",
-        "routeDisplay",
-        "alternateIdentifier",
-        "alternateNameType",
-        "alternateNameValue",
-      ],
-      [
-        [
-          "Medication",
-          `test-pk-${suffix}`,
-          `Test PK ${suffix}`,
-          "medication",
-          "",
-          "",
-          "tablets",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-          "",
-        ],
-      ],
-    );
+    const csvPath = createTempCsv([...ALL_HEADERS], [makeValidPkRow(suffix)]);
 
     try {
       await uploadCsvFile(page, csvPath);
@@ -173,6 +247,151 @@ test.describe("Product Knowledge Import", () => {
     try {
       await uploadCsvFile(page, csvPath);
       await expectUploadError(page, /missing required headers/i);
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  // ─── Category Picker ─────────────────────────────────────────────
+
+  test("should accept CSV without resourceCategory header when picker is used", async ({
+    page,
+  }) => {
+    const suffix = Date.now();
+    const headersWithoutCategory = [
+      ...PK_REQUIRED_HEADERS,
+      ...PK_OPTIONAL_HEADERS,
+    ].filter((h) => h !== "resourceCategory");
+    const row = makeValidPkRow(suffix);
+    // Remove resourceCategory value (index 0)
+    const rowWithoutCategory = headersWithoutCategory.map(
+      (h) => row[ALL_HEADERS.indexOf(h)],
+    );
+
+    const csvPath = createTempCsv(headersWithoutCategory, [rowWithoutCategory]);
+
+    try {
+      await pickCategory(page, testCategoryTitle);
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { validCount: 1, totalCount: 1 });
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  test("should import using picker category and verify via API", async ({
+    page,
+    request,
+  }) => {
+    const suffix = Date.now();
+    const uniqueName = `Test PK ${suffix}`;
+    const uniqueSlug = `test-pk-picker-${suffix}`;
+
+    const headersWithoutCategory = [
+      ...PK_REQUIRED_HEADERS,
+      ...PK_OPTIONAL_HEADERS,
+    ].filter((h) => h !== "resourceCategory");
+    const row = makeValidPkRow(suffix, {
+      name: uniqueName,
+      slug: uniqueSlug,
+    });
+    const rowWithoutCategory = headersWithoutCategory.map(
+      (h) => row[ALL_HEADERS.indexOf(h)],
+    );
+
+    const csvPath = createTempCsv(headersWithoutCategory, [rowWithoutCategory]);
+
+    try {
+      await pickCategory(page, testCategoryTitle);
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { validCount: 1, totalCount: 1 });
+      await clickImportButton(page);
+      await expectImportSuccess(page);
+
+      // Verify via API (PK is NOT facility-scoped)
+      const results = await fetchApiResults<{
+        name: string;
+        slug: string;
+        slug_config: { slug_value: string };
+      }>(request, `/api/v1/product_knowledge/f-${facility.id}-${uniqueSlug}`, {
+        paginated: false,
+      });
+      expect(results.name).toBe(uniqueName);
+      expect(results.slug_config.slug_value).toBe(uniqueSlug);
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  test("picker category should override CSV resourceCategory column", async ({
+    page,
+    request,
+  }) => {
+    const suffix = Date.now();
+    const uniqueName = `Test PK Override ${suffix}`;
+    const uniqueSlug = `test-pk-override-${suffix}`;
+
+    // CSV has a resourceCategory value, but picker should take precedence
+    const csvPath = createTempCsv(
+      [...ALL_HEADERS],
+      [
+        makeValidPkRow(suffix, {
+          name: uniqueName,
+          slug: uniqueSlug,
+          resourceCategory: "SomeOtherCategory",
+        }),
+      ],
+    );
+
+    try {
+      await pickCategory(page, testCategoryTitle);
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { validCount: 1, totalCount: 1 });
+      await clickImportButton(page);
+      await expectImportSuccess(page);
+
+      // Verify the picker category was used, not the CSV value
+      const results = await fetchApiResults<{
+        name: string;
+        category?: { slug: string };
+      }>(request, `/api/v1/product_knowledge/f-${facility.id}-${uniqueSlug}`, {
+        paginated: false,
+      });
+      expect(results.category?.slug).toBe(testCategorySlug);
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  test("should import with CSV category and verify via API", async ({
+    page,
+    request,
+  }) => {
+    const suffix = Date.now();
+    const uniqueName = `Test PK CSV Cat ${suffix}`;
+    const uniqueSlug = `test-pk-csvcat-${suffix}`;
+
+    const csvPath = createTempCsv(
+      [...ALL_HEADERS],
+      [makeValidPkRow(suffix, { name: uniqueName, slug: uniqueSlug })],
+    );
+
+    try {
+      // No picker — use CSV resourceCategory column
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { validCount: 1, totalCount: 1 });
+      await clickImportButton(page);
+      await expectImportSuccess(page);
+
+      // Verify the imported product knowledge exists
+      const results = await fetchApiResults<{
+        name: string;
+        slug_config: { slug_value: string };
+      }>(request, `/api/v1/product_knowledge/f-${facility.id}-${uniqueSlug}`, {
+        paginated: false,
+      });
+      expect(results.name).toBe(uniqueName);
+      expect(results.slug_config.slug_value).toBe(uniqueSlug);
     } finally {
       cleanupTempFile(csvPath);
     }
