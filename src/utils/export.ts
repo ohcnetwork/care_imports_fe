@@ -1,5 +1,3 @@
-import { request } from "@/apis";
-
 /**
  * Strip the facility-scoped slug prefix `f-{facilityId}-` from a slug.
  * If the slug doesn't match the prefix pattern, it is returned as-is.
@@ -51,35 +49,4 @@ export interface PaginatedResponse<T> {
   count: number;
   results: T[];
   next?: string | null;
-}
-
-/**
- * Fetch all pages from a paginated API endpoint.
- * Returns the full list of results.
- */
-export async function fetchAllPages<T>(
-  path: string,
-  pageSize = 100,
-): Promise<{ results: T[]; count: number }> {
-  const allResults: T[] = [];
-  let offset = 0;
-  let totalCount = 0;
-
-  const separator = path.includes("?") ? "&" : "?";
-
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const url = `${path}${separator}limit=${pageSize}&offset=${offset}`;
-    const page = await request<PaginatedResponse<T>>(url, { method: "GET" });
-
-    totalCount = page.count;
-    allResults.push(...page.results);
-
-    if (allResults.length >= totalCount || page.results.length < pageSize) {
-      break;
-    }
-    offset += pageSize;
-  }
-
-  return { results: allResults, count: totalCount };
 }

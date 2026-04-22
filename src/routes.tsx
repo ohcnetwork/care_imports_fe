@@ -2,8 +2,8 @@ import { Redirect } from "raviger";
 import type { ReactNode } from "react";
 
 import ActivityDefinitionImport from "@/components/pages/ActivityDefinition/ActivityDefinitionImport";
-import ChargeItemDefinitionImport from "@/components/pages/ChargeItemDefinitionImport";
-import DepartmentImport from "@/components/pages/DepartmentImport";
+import ChargeItemDefinitionImport from "@/components/pages/ChargeItemDefinition/ChargeItemDefinitionImport";
+import DepartmentImport from "@/components/pages/Departments/DepartmentImport";
 import ActivityDefinitionExport from "@/components/pages/exports/ActivityDefinitionExport";
 import ChargeItemDefinitionExport from "@/components/pages/exports/ChargeItemDefinitionExport";
 import DepartmentExport from "@/components/pages/exports/DepartmentExport";
@@ -19,12 +19,12 @@ import UsersExport from "@/components/pages/exports/UsersExport";
 import ValueSetExport from "@/components/pages/exports/ValueSetExport";
 import ImportsLayout, { ImportTabId } from "@/components/pages/ImportsLayout";
 import LinkUsersImport from "@/components/pages/LinkUsersImport";
-import LocationImport from "@/components/pages/LocationImport";
+import LocationImport from "@/components/pages/Location/LocationImport";
 import ObservationDefinitionImport from "@/components/pages/ObservationDefinition/ObservationDefinitionImport";
-import ProductImport from "@/components/pages/ProductImport";
+import ProductImport from "@/components/pages/Product/ProductImport";
 import ProductKnowledgeImport from "@/components/pages/ProductKnowledge/ProductKnowledgeImport";
 import SpecimenDefinitionImport from "@/components/pages/SpecimenDefinition/SpecimenDefinitionImport";
-import UsersImportPage from "@/components/pages/UsersImport";
+import UsersImportPage from "@/components/pages/Users/UsersImport";
 import ValueSetImport from "@/components/pages/ValueSet/ValueSetImport";
 
 const renderImportsPage = (activeTab: ImportTabId, content: ReactNode) => (

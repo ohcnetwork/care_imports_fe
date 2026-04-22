@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { apis } from "@/apis";
+import { request } from "@/apis/request";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import locationApi from "@/types/location/locationApi";
 
 interface LocationNode {
   id: string;
@@ -94,14 +95,17 @@ export function LocationTreePicker({
     async (parent?: string, search?: string) => {
       setLoading(true);
       try {
-        const response = await apis.facility.location.list(facilityId, {
-          parent: parent ?? undefined,
-          name: search || undefined,
-          mode: "kind",
-          ordering: "sort_index",
-          status: "active",
-          limit: 100,
-          ...(parent ? {} : { mine: true }),
+        const response = await request(locationApi.list, {
+          pathParams: { facility_id: facilityId },
+          queryParams: {
+            parent: parent ?? undefined,
+            name: search || undefined,
+            mode: "kind",
+            ordering: "sort_index",
+            status: "active",
+            limit: 100,
+            ...(parent ? {} : { mine: true }),
+          },
         });
         setLocations(
           response.results.map((l) => ({

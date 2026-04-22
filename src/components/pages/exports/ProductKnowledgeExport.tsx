@@ -1,46 +1,10 @@
 import ExportCard from "@/components/shared/ExportCard";
-import { stripFacilitySlugPrefix } from "@/utils/export";
+import type { ProductKnowledgeBase } from "@/types/inventory/productKnowledge/productKnowledge";
+import productKnowledgeApi from "@/types/inventory/productKnowledge/productKnowledgeApi";
+import { stripFacilitySlugPrefix } from "@/Utils/export";
 
 interface ProductKnowledgeExportProps {
   facilityId?: string;
-}
-
-interface CodePayload {
-  system?: string;
-  code?: string;
-  display?: string;
-}
-
-interface ProductName {
-  name_type?: string;
-  name?: string;
-}
-
-interface Definitional {
-  dosage_form?: CodePayload | null;
-  intended_routes?: CodePayload[];
-  ingredients?: unknown[];
-  nutrients?: unknown[];
-  drug_characteristic?: unknown[];
-}
-
-interface ResourceCategory {
-  title?: string;
-}
-
-interface ProductKnowledgeRead {
-  id: string;
-  slug: string;
-  slug_config?: { slug_value: string };
-  name: string;
-  product_type: string;
-  status: string;
-  base_unit?: CodePayload;
-  code?: CodePayload | null;
-  definitional?: Definitional | null;
-  names?: ProductName[];
-  alternate_identifier?: string;
-  category?: ResourceCategory | null;
 }
 
 const CSV_HEADERS = [
@@ -66,11 +30,12 @@ export default function ProductKnowledgeExport({
   if (!facilityId) return null;
 
   return (
-    <ExportCard<ProductKnowledgeRead>
+    <ExportCard<ProductKnowledgeBase>
       title="Export Product Knowledge"
       description="Export all product knowledge as a CSV file matching the import format."
       queryKey={["product-knowledge", facilityId]}
-      apiPath={`/api/v1/product_knowledge/?facility=${facilityId}`}
+      route={productKnowledgeApi.listProductKnowledge}
+      queryParams={{ facility: facilityId }}
       csvHeaders={CSV_HEADERS}
       mapRow={(item) => {
         const slug = stripFacilitySlugPrefix(

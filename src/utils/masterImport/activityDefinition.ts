@@ -1,17 +1,10 @@
+import {
+  ActivityDefinitionProcessedRow,
+  ActivityDefinitionRow,
+} from "@/components/pages/ActivityDefinition/utils";
 import type { Code } from "@/types/base/code/code";
-import type {
-  ActivityDefinitionProcessedRow,
-  ActivityDefinitionRow,
-  ParseActivityDefinitionOptions,
-} from "@/types/emr/activityDefinition/activityDefinition";
-import { parseCsvText } from "@/utils/csv";
-import { isUrlSafeSlug } from "@/utils/slug";
-
-export type {
-  ActivityDefinitionProcessedRow,
-  ActivityDefinitionRow,
-  ParseActivityDefinitionOptions,
-} from "@/types/emr/activityDefinition/activityDefinition";
+import { parseCsvText } from "@/Utils/csv";
+import { isUrlSafeSlug } from "@/Utils/slug";
 
 const REQUIRED_HEADERS = [
   "title",
@@ -81,7 +74,9 @@ const getCellValue = (
 
 export const parseActivityDefinitionCsv = (
   csvText: string,
-  options: ParseActivityDefinitionOptions = {},
+  options: {
+    requireChargeItemPrice?: boolean;
+  } = {},
 ): ActivityDefinitionProcessedRow[] => {
   const { headers, rows } = parseCsvText(csvText);
 
@@ -236,7 +231,7 @@ export const parseActivityDefinitionCsv = (
       charge_item_slugs: splitCellValues(
         getCellValue(row, headerMap, "charge_item_slugs").trim(),
       ),
-      charge_item_price: chargeItemPrice || undefined,
+      charge_item_price: chargeItemPrice,
       location_names: splitCellValues(
         getCellValue(row, headerMap, "location_names").trim(),
       ),

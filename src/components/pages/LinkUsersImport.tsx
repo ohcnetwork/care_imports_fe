@@ -2,7 +2,7 @@ import { useMutation } from "@tanstack/react-query";
 import { AlertCircle, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { apis } from "@/apis";
+import { request } from "@/apis/request";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +13,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { parseCsvText } from "@/utils/csv";
+import roleApi from "@/types/emr/role/roleApi";
+import facilityOrganizationApi from "@/types/facilityOrganization/facilityOrganizationApi";
+import userApi from "@/types/user/userApi";
+import { parseCsvText } from "@/Utils/csv";
+import { mutate } from "@/Utils/request/mutate";
 
 interface LinkUsersImportProps {
   facilityId?: string;
@@ -162,10 +166,8 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
     try {
       await Promise.all(
         uniqueRoleNames.map(async (roleName) => {
-          const response = await apis.role.list({
-            limit: 10,
-            offset: 0,
-            name: roleName,
+          const response = await request(roleApi.listRoles, {
+            queryParams: { limit: 10, offset: 0, name: roleName },
           });
           const key = normalizeName(roleName);
           const match = response.results.find(
@@ -180,9 +182,9 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
         }),
       );
 
-      const organizationsResponse = await apis.facility.organizations.list(
-        facilityId!,
-        { limit: 500 },
+      const organizationsResponse = await request(
+        facilityOrganizationApi.list,
+        { pathParams: { facilityId }, queryParams: { limit: 500 } },
       );
 
       const organizationLookup = new Map<string, string>();
@@ -395,7 +397,9 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
           };
         } else if (row.username) {
           try {
-            const user = await apis.user.get(row.username);
+            const user = await request(userApi.get, {
+              pathParams: { username: row.username },
+            });
             updatedRow = {
               ...updatedRow,
               resolvedUserId: user.id,
@@ -493,15 +497,15 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
               );
               continue;
             }
-
-            await apis.facility.organizations.addUser(
-              facilityId!,
-              resolvedDepartmentId,
-              {
-                user: row.resolvedUserId!,
-                role: resolvedRoleId,
+            await mutate(facilityOrganizationApi.assignUser, {
+              pathParams: {
+                facilityId: facilityId!,
+                organizationId: resolvedDepartmentId,
               },
-            );
+            })({
+              user: row.resolvedUserId!,
+              role: resolvedRoleId,
+            });
           }
 
           if (rowIssues.length > 0) {
