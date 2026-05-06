@@ -63,54 +63,57 @@ export const PK_HEADER_MAP: Record<string, string> = PK_ALL_HEADERS.reduce(
 );
 
 // ─── Zod Schema ────────────────────────────────────────────────────
-export const ProductKnowledgeRowSchema = z
-  .object({
-    // Required fields
-    resourceCategory: z.string().optional(), // Used when category is provided in csv
-    categorySlug: z.string().optional(), // Used when category is provided by picker
-    slug: SlugSchema,
-    name: z.string().min(1, "Name is required"),
-    productType: z.nativeEnum(ProductKnowledgeType),
-    baseUnitDisplay: z
-      .string()
-      .min(1, "Base unit is required")
-      .refine(
-        (display) =>
-          DOSAGE_UNITS_CODES.some(
-            (u) => u.display.toLowerCase() === display.toLowerCase(),
-          ),
-        (display) => ({
-          message: `Could not resolve base unit for '${display}'. Valid units: ${DOSAGE_UNITS_CODES.map((u) => u.display).join(", ")}`,
-        }),
-      ),
+export const ProductKnowledgeRowSchema = (facilityId?: string) =>
+  z
+    .object({
+      // Required fields
+      resourceCategory: z.string().optional(), // Used when category is provided in csv
+      categorySlug: z.string().optional(), // Used when category is provided by picker
+      slug: SlugSchema,
+      name: z.string().min(1, "Name is required"),
+      productType: z.nativeEnum(ProductKnowledgeType),
+      baseUnitDisplay: z
+        .string()
+        .min(1, "Base unit is required")
+        .refine(
+          (display) =>
+            DOSAGE_UNITS_CODES.some(
+              (u) => u.display.toLowerCase() === display.toLowerCase(),
+            ),
+          (display) => ({
+            message: `Could not resolve base unit for '${display}'. Valid units: ${DOSAGE_UNITS_CODES.map((u) => u.display).join(", ")}`,
+          }),
+        ),
 
-    // Optional fields
-    codeDisplay: z.string().optional(),
-    codeValue: z.string().optional(),
-    dosageFormDisplay: z.string().optional(),
-    dosageFormCode: z.string().optional(),
-    routeCode: z.string().optional(),
-    routeDisplay: z.string().optional(),
-    alternateIdentifier: z.string().optional(),
-    alternateNameType: z.nativeEnum(ProductNameTypes).optional(),
-    alternateNameValue: z.string().optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (!data.resourceCategory && !data.categorySlug) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message:
-          "Either resourceCategory (in csv) or categorySlug (from picker) must be provided",
-      });
-    }
-  });
+      // Optional fields
+      codeDisplay: z.string().optional(),
+      codeValue: z.string().optional(),
+      dosageFormDisplay: z.string().optional(),
+      dosageFormCode: z.string().optional(),
+      routeCode: z.string().optional(),
+      routeDisplay: z.string().optional(),
+      alternateIdentifier: z.string().optional(),
+      alternateNameType: z.nativeEnum(ProductNameTypes).optional(),
+      alternateNameValue: z.string().optional(),
+    })
+    .superRefine((data, ctx) => {
+      if (facilityId && !data.resourceCategory && !data.categorySlug) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            "Either resourceCategory (in csv) or categorySlug (from picker) must be provided",
+        });
+      }
+    });
 
 /** Schema variant where resourceCategory is optional (when picker provides it). */
-export const getProductKnowledgeRowSchema = () => {
-  return ProductKnowledgeRowSchema;
+export const getProductKnowledgeRowSchema = (facilityId?: string) => {
+  return ProductKnowledgeRowSchema(facilityId);
 };
 
-export type ProductKnowledgeRow = z.infer<typeof ProductKnowledgeRowSchema>;
+export type ProductKnowledgeRow = z.infer<
+  ReturnType<typeof ProductKnowledgeRowSchema>
+>;
 
 // ─── Helpers ───────────────────────────────────────────────────────
 function parseCsvList(value: string): string[] {
@@ -135,19 +138,19 @@ function resolveBaseUnit(display: string) {
 // ─── API Payload Transformer ───────────────────────────────────────
 export function toProductKnowledgeCreatePayload(
   row: ProductKnowledgeRow,
-  facilityId: string,
-  categorySlug: string,
+  facilityId?: string,
+  categorySlug?: string,
 ): ProductKnowledgeCreate {
   const baseUnit = resolveBaseUnit(row.baseUnitDisplay);
 
   const payload: ProductKnowledgeCreate = {
     slug_value: row.slug,
     name: row.name.trim(),
-    facility: facilityId,
+    ...(facilityId ? { facility: facilityId } : {}),
     product_type: row.productType as ProductKnowledgeType,
     status: ProductKnowledgeStatus.active,
     base_unit: baseUnit,
-    category: categorySlug,
+    ...(categorySlug ? { category: categorySlug } : {}),
     names: [],
     storage_guidelines: [],
     is_instance_level: false,

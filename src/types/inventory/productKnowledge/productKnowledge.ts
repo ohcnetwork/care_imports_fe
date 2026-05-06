@@ -91,8 +91,8 @@ export interface ProductKnowledgeCreate extends Omit<
   "id" | "category" | "slug_config" | "slug"
 > {
   slug_value: string;
-  facility: string;
-  category: string;
+  facility?: string;
+  category?: string;
 }
 
 export interface ProductKnowledgeUpdate extends Omit<
@@ -100,8 +100,8 @@ export interface ProductKnowledgeUpdate extends Omit<
   "id" | "category" | "slug_config" | "slug"
 > {
   slug_value: string;
-  facility: string;
-  category: string;
+  facility?: string;
+  category?: string;
 }
 
 export const UCUM_TIME_UNITS_CODES = [
