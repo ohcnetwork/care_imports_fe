@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import type { ImportProgress as ImportProgressData } from "@/hooks/useImportMutation";
-import type { ImportResults } from "@/types/common";
+import type { ImportResults } from "@/internalTypes/common";
 import { CheckCircle2, Download, XCircle } from "lucide-react";
 import { useCallback } from "react";
 
