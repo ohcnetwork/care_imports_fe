@@ -1,4 +1,5 @@
 import type { Code } from "@/types/base/code/code";
+
 import type { Condition } from "@/types/base/condition/condition";
 import { ConditionOperation } from "@/types/base/condition/condition";
 import type {
@@ -6,19 +7,9 @@ import type {
   QualifiedRange,
 } from "@/types/base/qualifiedRange/qualifiedRange";
 import { InterpretationType } from "@/types/base/qualifiedRange/qualifiedRange";
-import type {
-  ObservationProcessedRow,
-  ObservationRow,
-} from "@/types/emr/observationDefinition/observationDefinition";
 import type { ObservationDefinitionComponentCreateSpec } from "@/types/emr/observationDefinition/observationDefinition";
 import { QuestionType } from "@/types/emr/observationDefinition/observationDefinition";
 import { parseCsvText } from "@/Utils/csv";
-import { isUrlSafeSlug } from "@/Utils/slug";
-
-export type {
-  ObservationProcessedRow,
-  ObservationRow,
-} from "@/types/emr/observationDefinition/observationDefinition";
 
 const REQUIRED_HEADERS = [
   "title",
@@ -35,20 +26,6 @@ const COMPONENT_REQUIRED_HEADERS = [
   "code_value",
   "code_display",
 ] as const;
-
-const OBSERVATION_CATEGORIES = [
-  "social_history",
-  "vital_signs",
-  "imaging",
-  "laboratory",
-  "procedure",
-  "survey",
-  "exam",
-  "therapy",
-  "activity",
-] as const;
-
-const OBSERVATION_STATUSES = ["draft", "active", "retired", "unknown"] as const;
 
 const QUESTION_TYPES = [
   "boolean",
@@ -74,31 +51,6 @@ const getCellValue = (
 ) => {
   const index = headerMap[normalizeHeader(key)];
   return index === undefined ? "" : (row[index] ?? "");
-};
-
-const buildOptionalCode = (
-  system: string | undefined,
-  code: string | undefined,
-  display: string | undefined,
-  errors: string[],
-  label: string,
-  defaultSystem?: string,
-) => {
-  const trimmedCode = code?.trim();
-  const trimmedDisplay = display?.trim();
-  if (!trimmedCode && !trimmedDisplay) {
-    return null;
-  }
-  if (!trimmedCode || !trimmedDisplay) {
-    errors.push(`${label} requires both code and display if provided`);
-    return null;
-  }
-  const resolvedSystem = system?.trim() || defaultSystem;
-  if (!resolvedSystem) {
-    errors.push(`${label} requires system if provided`);
-    return null;
-  }
-  return { system: resolvedSystem, code: trimmedCode, display: trimmedDisplay };
 };
 
 /* ------------------------------------------------------------------ */
@@ -371,207 +323,4 @@ export const parseComponentCsv = (
   }
 
   return { componentMap: resultMap, errors };
-};
-
-/* ------------------------------------------------------------------ */
-/*  Definitions CSV parser                                             */
-/* ------------------------------------------------------------------ */
-
-export const parseObservationDefinitionCsv = (
-  csvText: string,
-  compCsvText?: string,
-): ObservationProcessedRow[] => {
-  const { headers, rows } = parseCsvText(csvText);
-
-  if (headers.length === 0) {
-    throw new Error("CSV is empty or missing headers");
-  }
-
-  const headerMap = headers.reduce<Record<string, number>>(
-    (acc, header, index) => {
-      acc[normalizeHeader(header)] = index;
-      return acc;
-    },
-    {},
-  );
-
-  const missingHeaders = REQUIRED_HEADERS.filter(
-    (header) => headerMap[normalizeHeader(header)] === undefined,
-  );
-
-  if (missingHeaders.length > 0) {
-    throw new Error(`Missing required headers: ${missingHeaders.join(", ")}`);
-  }
-
-  // Parse components CSV if provided
-  let componentMap = new Map<
-    string,
-    ObservationDefinitionComponentCreateSpec[]
-  >();
-  let componentErrors: { csvRow: number; message: string }[] = [];
-  if (compCsvText) {
-    const result = parseComponentCsv(compCsvText);
-    componentMap = result.componentMap;
-    componentErrors = result.errors;
-  }
-
-  const slugSeen = new Map<string, number>();
-
-  const processedRows = rows.map((row, index) => {
-    const errors: string[] = [];
-    const title = getCellValue(row, headerMap, "title").trim();
-    const slugValue = getCellValue(row, headerMap, "slug_value").trim();
-    const description = getCellValue(row, headerMap, "description").trim();
-    const category = getCellValue(row, headerMap, "category").trim();
-    const status = getCellValue(row, headerMap, "status").trim();
-    const permittedDataType = getCellValue(
-      row,
-      headerMap,
-      "permitted_data_type",
-    ).trim();
-    const codeSystem = getCellValue(row, headerMap, "code_system").trim();
-    const codeValue = getCellValue(row, headerMap, "code_value").trim();
-    const codeDisplay = getCellValue(row, headerMap, "code_display").trim();
-
-    if (!title) errors.push("Missing title");
-    if (!slugValue) {
-      errors.push("Missing slug_value");
-    } else {
-      if (!isUrlSafeSlug(slugValue)) {
-        errors.push(
-          `slug_value "${slugValue}" contains invalid characters (only lowercase letters, digits, hyphens, and underscores are allowed)`,
-        );
-      }
-      const prevRow = slugSeen.get(slugValue);
-      if (prevRow !== undefined) {
-        errors.push(
-          `Duplicate slug_value "${slugValue}" (first seen in row ${prevRow})`,
-        );
-      } else {
-        slugSeen.set(slugValue, index + 2);
-      }
-    }
-    if (!description) errors.push("Missing description");
-    if (!category) {
-      errors.push("Missing category");
-    } else if (!OBSERVATION_CATEGORIES.includes(category as never)) {
-      errors.push("Invalid category value");
-    }
-
-    if (!permittedDataType) {
-      errors.push("Missing permitted_data_type");
-    } else if (!QUESTION_TYPES.includes(permittedDataType as never)) {
-      errors.push("Invalid permitted_data_type");
-    }
-
-    const resolvedCodeSystem = codeSystem.trim() || "http://loinc.org";
-    if (!codeValue || !codeDisplay) {
-      errors.push("Missing code value/display");
-    }
-
-    if (status && !OBSERVATION_STATUSES.includes(status as never)) {
-      errors.push("Invalid status value");
-    }
-
-    const bodySite = buildOptionalCode(
-      getCellValue(row, headerMap, "body_site_system").trim(),
-      getCellValue(row, headerMap, "body_site_code").trim(),
-      getCellValue(row, headerMap, "body_site_display").trim(),
-      errors,
-      "Body site",
-    );
-    const method = buildOptionalCode(
-      getCellValue(row, headerMap, "method_system").trim(),
-      getCellValue(row, headerMap, "method_code").trim(),
-      getCellValue(row, headerMap, "method_display").trim(),
-      errors,
-      "Method",
-      "http://snomed.info/sct",
-    );
-    const permittedUnit = buildOptionalCode(
-      getCellValue(row, headerMap, "permitted_unit_system").trim(),
-      getCellValue(row, headerMap, "permitted_unit_code").trim(),
-      getCellValue(row, headerMap, "permitted_unit_display").trim(),
-      errors,
-      "Permitted unit",
-      "http://unitsofmeasure.org",
-    );
-
-    // Attach components from the components CSV (matched by slug)
-    const component: ObservationDefinitionComponentCreateSpec[] =
-      (slugValue ? componentMap.get(slugValue) : undefined) ?? [];
-
-    const qualifiedRangesRaw = getCellValue(
-      row,
-      headerMap,
-      "qualified_ranges",
-    ).trim();
-    let qualifiedRanges: QualifiedRange[] = [];
-    if (qualifiedRangesRaw) {
-      try {
-        const parsedRanges = JSON.parse(qualifiedRangesRaw);
-        if (
-          Array.isArray(parsedRanges) &&
-          parsedRanges.every(
-            (v: unknown) =>
-              Boolean(v) && typeof v === "object" && !Array.isArray(v),
-          )
-        ) {
-          qualifiedRanges = parsedRanges as QualifiedRange[];
-        } else {
-          errors.push("Qualified ranges must be a JSON array of objects");
-        }
-      } catch {
-        errors.push("Qualified ranges JSON could not be parsed");
-      }
-    }
-
-    const data: ObservationRow = {
-      title,
-      slug_value: slugValue,
-      description,
-      category,
-      status: status || "active",
-      code: {
-        system: resolvedCodeSystem,
-        code: codeValue,
-        display: codeDisplay,
-      },
-      permitted_data_type: permittedDataType,
-      component,
-      body_site: bodySite,
-      method,
-      permitted_unit: permittedUnit,
-      qualified_ranges: qualifiedRanges,
-      derived_from_uri: getCellValue(row, headerMap, "derived_from_uri").trim(),
-    };
-
-    return {
-      rowIndex: index + 2,
-      data,
-      errors,
-    };
-  });
-
-  // Surface component CSV-level errors on the first processed row
-  if (componentErrors.length > 0 && processedRows.length > 0) {
-    for (const err of componentErrors) {
-      processedRows[0].errors.push(
-        `Components CSV row ${err.csvRow}: ${err.message}`,
-      );
-    }
-  }
-
-  // Warn about orphan slugs in component CSV (slugs with no matching definition)
-  const definedSlugs = new Set(slugSeen.keys());
-  for (const slug of componentMap.keys()) {
-    if (!definedSlugs.has(slug)) {
-      const warning = `Components CSV references unknown slug "${slug}" (no matching definition)`;
-      if (processedRows.length > 0) {
-        processedRows[0].errors.push(warning);
-      }
-    }
-  }
-
-  return processedRows;
 };
