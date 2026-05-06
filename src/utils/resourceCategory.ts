@@ -1,10 +1,11 @@
-import { apis } from "@/apis";
+import { request } from "@/apis/request";
 import {
-  ResourceCategoryRead,
   ResourceCategoryResourceType,
   ResourceCategorySubType,
 } from "@/types/base/resourceCategory/resourceCategory";
-import { createSlug } from "@/utils/slug";
+import resourceCategoryApi from "@/types/base/resourceCategory/resourceCategoryApi";
+import { createSlug } from "@/Utils/slug";
+import { mutate } from "./request/mutate";
 
 const normalizeName = (value: string) => value.trim().toLowerCase();
 
@@ -38,13 +39,10 @@ export async function upsertResourceCategories({
     return new Map<string, string>();
   }
 
-  const existingCategories = (await apis.facility.resourceCategory.list(
-    facilityId,
-    {
-      limit: 200,
-      resource_type: resourceType,
-    },
-  )) as unknown as { results: ResourceCategoryRead[] };
+  const existingCategories = await request(resourceCategoryApi.list, {
+    pathParams: { facilityId },
+    queryParams: { limit: 200, resource_type: resourceType },
+  });
 
   const existingLookup = new Map<string, string>();
   existingCategories.results.forEach((category) => {
@@ -58,22 +56,27 @@ export async function upsertResourceCategories({
     }),
   );
 
+  console.log("Existing categories:", existingLookup);
+
   const newDatapoints = categoryEntries
     .filter(({ normalized }) => !existingLookup.has(normalized))
     .map(({ category, slug }) => ({ category, slug }));
 
+  console.log("New categories to create:", newDatapoints);
+
   if (newDatapoints.length > 0) {
-    await apis.facility.resourceCategory.upsert(facilityId, {
-      datapoints: newDatapoints.map(({ category, slug }) => {
-        const slugValue = `${slugPrefix}-${slug}`;
-        return {
+    await Promise.all(
+      newDatapoints.map(async ({ category, slug }) => {
+        await mutate(resourceCategoryApi.create, {
+          pathParams: { facilityId },
+        })({
           title: category,
-          slug_value: slugValue,
+          slug_value: `${slugPrefix}-${slug}`,
           resource_type: resourceType,
           resource_sub_type: ResourceCategorySubType.other,
-        };
+        });
       }),
-    });
+    );
   }
 
   const categorySlugMap = new Map<string, string>();

@@ -1,50 +1,10 @@
 import ExportCard from "@/components/shared/ExportCard";
-import { stripFacilitySlugPrefix } from "@/utils/export";
+import type { ProductRead } from "@/types/inventory/product/product";
+import productApi from "@/types/inventory/product/productApi";
+import { stripFacilitySlugPrefix } from "@/Utils/export";
 
 interface ProductExportProps {
   facilityId?: string;
-}
-
-interface BatchSpec {
-  lot_number?: string;
-}
-
-interface PriceComponent {
-  amount?: string;
-  monetary_component_type?: string;
-}
-
-interface SlugConfig {
-  facility?: string;
-  slug_value?: string;
-}
-
-interface ProductKnowledgeRef {
-  name?: string;
-  slug?: string;
-  slug_config?: SlugConfig;
-  product_type?: string;
-  definitional?: {
-    dosage_form?: {
-      display?: string;
-    };
-  };
-}
-
-interface ChargeItemDefinitionRef {
-  title?: string;
-  slug?: string;
-  slug_config?: SlugConfig;
-  price_components?: PriceComponent[];
-}
-
-interface ProductRead {
-  id: string;
-  status: string;
-  product_knowledge?: ProductKnowledgeRef | null;
-  charge_item_definition?: ChargeItemDefinitionRef | null;
-  batch?: BatchSpec | null;
-  expiration_date?: string;
 }
 
 const CSV_HEADERS = [
@@ -69,7 +29,8 @@ export default function ProductExport({ facilityId }: ProductExportProps) {
       title="Export Products"
       description="Export all products as a CSV file matching the import format."
       queryKey={["product", facilityId]}
-      apiPath={`/api/v1/facility/${facilityId}/product/`}
+      route={productApi.listProduct}
+      pathParams={{ facilityId }}
       csvHeaders={CSV_HEADERS}
       mapRow={(item) => {
         const pkSlugValue =

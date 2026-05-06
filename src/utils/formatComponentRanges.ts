@@ -1,21 +1,5 @@
-type JsonObject = Record<string, unknown>;
-
-interface Condition {
-  metric: string;
-  operation: string;
-  value: unknown;
-}
-
-interface RangeBand {
-  interpretation?: { display?: string };
-  min?: string | number;
-  max?: string | number;
-}
-
-interface QualifiedRange {
-  conditions?: Condition[];
-  ranges?: RangeBand[];
-}
+import type { QualifiedRange } from "@/types/base/qualifiedRange/qualifiedRange";
+import type { ObservationDefinitionComponentSpec } from "@/types/emr/observationDefinition/observationDefinition";
 
 /**
  * Format a single qualified range into a human-readable string.
@@ -81,21 +65,19 @@ function formatQualifiedRange(qr: QualifiedRange): string {
  * (age, gender) followed by the range values.
  */
 export function formatComponentRanges(
-  qualifiedRanges: JsonObject[] | undefined,
+  qualifiedRanges: QualifiedRange[] | undefined,
 ): string[] {
   if (!qualifiedRanges || qualifiedRanges.length === 0) return [];
-  return (qualifiedRanges as unknown as QualifiedRange[])
-    .map(formatQualifiedRange)
-    .filter((s) => s.length > 0);
+  return qualifiedRanges.map(formatQualifiedRange).filter((s) => s.length > 0);
 }
 
 /**
  * Extract a readable unit display from a component's permitted_unit field.
  */
-export function getComponentUnit(component: JsonObject): string {
-  const unit = component.permitted_unit as
-    | { display?: string; code?: string }
-    | null
-    | undefined;
-  return unit?.display ?? unit?.code ?? "";
+export function getComponentUnit(
+  component: ObservationDefinitionComponentSpec,
+): string {
+  return (
+    component.permitted_unit?.display ?? component.permitted_unit?.code ?? ""
+  );
 }

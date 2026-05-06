@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 
-import { apis } from "@/apis";
+import { request } from "@/apis/request";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import {
   Select,
@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import userApi from "@/types/user/userApi";
 
 export type ExportTabId =
   | "users"
@@ -99,7 +100,7 @@ export default function ExportsLayout({
 
     const loadFacilities = async () => {
       try {
-        const response = await apis.user.getCurrentUser();
+        const response = await request(userApi.currentUser);
         if (!active) return;
         setFacilities(response.facilities ?? []);
         setFacilityError(null);

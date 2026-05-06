@@ -8,8 +8,8 @@ import {
   SpecimenRow,
   type SpecimenProcessedRow,
 } from "@/types/emr/specimenDefinition/specimenDefinition";
-import { parseCsvText } from "@/utils/csv";
-import { isUrlSafeSlug } from "@/utils/slug";
+import { parseCsvText } from "@/Utils/csv";
+import { isUrlSafeSlug } from "@/Utils/slug";
 
 export type { SpecimenProcessedRow } from "@/types/emr/specimenDefinition/specimenDefinition";
 

@@ -1,70 +1,109 @@
-/**
- * Allowed filter operators for ValueSet compose entries.
- */
-export const VALUESET_FILTER_OPS = [
-  "=",
-  "is-a",
-  "descendent-of",
-  "is-not-a",
-  "regex",
-  "in",
-  "not-in",
-  "generalizes",
-  "child-of",
-  "descendent-leaf",
-  "exists",
-] as const;
+import { Designation } from "@/types/base/code/code";
+import {
+  ArchiveIcon,
+  FileCheckIcon,
+  HelpCircle,
+  NotepadTextDashedIcon,
+} from "lucide-react";
 
-export type ValueSetFilterOp = (typeof VALUESET_FILTER_OPS)[number];
+export enum ValueSetStatus {
+  ACTIVE = "active",
+  DRAFT = "draft",
+  RETIRED = "retired",
+  UNKNOWN = "unknown",
+}
 
-/**
- * Allowed code systems.
- */
-export const VALUESET_CODE_SYSTEMS = [
-  "http://loinc.org",
-  "http://snomed.info/sct",
-  "http://unitsofmeasure.org",
-] as const;
+export const VALUESET_STATUS_COLORS = {
+  [ValueSetStatus.ACTIVE]: "primary",
+  [ValueSetStatus.DRAFT]: "yellow",
+  [ValueSetStatus.RETIRED]: "destructive",
+  [ValueSetStatus.UNKNOWN]: "secondary",
+} as const;
 
-export type CodeSystem = (typeof VALUESET_CODE_SYSTEMS)[number];
+export const VALUESET_STATUS_ICONS = {
+  [ValueSetStatus.ACTIVE]: FileCheckIcon,
+  [ValueSetStatus.DRAFT]: NotepadTextDashedIcon,
+  [ValueSetStatus.RETIRED]: ArchiveIcon,
+  [ValueSetStatus.UNKNOWN]: HelpCircle,
+} as const;
 
-export const CODE_SYSTEM_LABELS: Record<CodeSystem, string> = {
-  "http://loinc.org": "LOINC",
-  "http://snomed.info/sct": "SNOMED CT",
-  "http://unitsofmeasure.org": "Units of Measure",
-};
+export interface ValueSetFilter {
+  op: string;
+  value: string;
+  property: string;
+}
 
 export interface ValueSetConcept {
   code: string;
   display: string;
 }
 
-export interface ValueSetFilter {
-  property: string;
-  op: ValueSetFilterOp;
-  value: string;
+export interface ValueSetInclude {
+  filter?: ValueSetFilter[];
+  system: string;
+  concept?: ValueSetConcept[];
 }
 
-export interface ValueSetComposeItem {
-  system: CodeSystem;
-  concept: ValueSetConcept[];
-  filter: ValueSetFilter[];
+interface ValueSetCompose {
+  exclude: ValueSetInclude[];
+  include: ValueSetInclude[];
 }
 
-export interface ValueSetCompose {
-  include: ValueSetComposeItem[];
-  exclude: ValueSetComposeItem[];
-}
-
-export interface ValueSetCreate {
-  name: string;
+export interface ValueSetBase {
   slug: string;
+  name: string;
   description: string;
-  status: "active";
-  is_system_defined: boolean;
   compose: ValueSetCompose;
+  status: ValueSetStatus;
+  is_system_defined: boolean;
 }
 
-export interface ValueSetRead extends ValueSetCreate {
+export interface ValueSetRead extends ValueSetBase {
+  id: string;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+export type ValueSetCreate = ValueSetBase;
+
+export interface ValueSetUpdate extends ValueSetBase {
   id: string;
 }
+
+export interface ExpandRequest {
+  search: string;
+  count: number;
+}
+
+export interface ValueSetCodeMetadata {
+  code: string;
+  display: string;
+  name: string;
+  system: string;
+  version: string;
+  inactive: boolean;
+}
+
+export interface DesignationItem {
+  details: Designation;
+  context: Record<string, unknown>;
+}
+
+export interface ValueSetLookupResponse {
+  designations: DesignationItem[];
+  metadata: ValueSetCodeMetadata;
+  properties: Record<string, unknown>;
+}
+
+export interface ValueSetLookupRequest {
+  system: string;
+  code: string;
+}
+
+export const TERMINOLOGY_SYSTEMS = {
+  LOINC: "http://loinc.org",
+  SNOMED: "http://snomed.info/sct",
+  UCUM: "http://unitsofmeasure.org",
+} as const;
+
+export type TerminologySystem = keyof typeof TERMINOLOGY_SYSTEMS;
