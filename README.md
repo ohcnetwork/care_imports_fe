@@ -685,7 +685,7 @@ Every import type has a matching **export** feature. Exports let you download th
 - **Departments** — Department hierarchy
 - **Locations** — Buildings, wards, rooms, and beds
 - **Charge Item Definitions** — Billable items and their prices
-- **Product Knowledge** — Medication and consumable catalogue
+- **Product Knowledge** — Medication and consumable catalogue. Resource category column will be empty for instance level product knowledges.
 - **Products** — Inventory items
 - **Specimen Definitions** — Specimen/sample type definitions
 - **Observation Definitions** — Lab observation definitions with reference ranges (exported as two files: definitions + components)
