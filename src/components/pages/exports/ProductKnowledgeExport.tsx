@@ -1,7 +1,10 @@
 import ExportCard from "@/components/shared/ExportCard";
 import type { ProductKnowledgeBase } from "@/types/inventory/productKnowledge/productKnowledge";
 import productKnowledgeApi from "@/types/inventory/productKnowledge/productKnowledgeApi";
-import { stripFacilitySlugPrefix } from "@/Utils/export";
+import {
+  stripFacilitySlugPrefix,
+  stripInstanceSlugPrefix,
+} from "@/Utils/export";
 
 interface ProductKnowledgeExportProps {
   facilityId?: string;
@@ -27,20 +30,22 @@ const CSV_HEADERS = [
 export default function ProductKnowledgeExport({
   facilityId,
 }: ProductKnowledgeExportProps) {
-  if (!facilityId) return null;
-
   return (
     <ExportCard<ProductKnowledgeBase>
       title="Export Product Knowledge"
       description="Export all product knowledge as a CSV file matching the import format."
       queryKey={["product-knowledge", facilityId]}
       route={productKnowledgeApi.listProductKnowledge}
-      queryParams={{ facility: facilityId }}
+      queryParams={facilityId ? { facility: facilityId } : undefined}
       csvHeaders={CSV_HEADERS}
       mapRow={(item) => {
-        const slug = stripFacilitySlugPrefix(
-          item.slug_config?.slug_value ?? item.slug ?? "",
-        );
+        const slug = facilityId
+          ? stripFacilitySlugPrefix(
+              item.slug_config?.slug_value ?? item.slug ?? "",
+            )
+          : stripInstanceSlugPrefix(
+              item.slug_config?.slug_value ?? item.slug ?? "",
+            );
         const routes = item.definitional?.intended_routes ?? [];
         const routeCodes = routes.map((r) => r.code ?? "").join(",");
         const routeDisplays = routes.map((r) => r.display ?? "").join(",");
@@ -64,8 +69,7 @@ export default function ProductKnowledgeExport({
           altName?.name ?? "",
         ];
       }}
-      filename={`product_knowledge_export_${facilityId}.csv`}
-      enabled={Boolean(facilityId)}
+      filename={`product_knowledge_export_${facilityId ? facilityId : "instance"}.csv`}
     />
   );
 }

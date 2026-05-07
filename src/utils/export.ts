@@ -13,6 +13,15 @@ export function stripFacilitySlugPrefix(slug: string): string {
   return slug;
 }
 
+export function stripInstanceSlugPrefix(slug: string): string {
+  // Match i- prefix (UUID v4 format)
+  const match = slug.match(/^i-[0-9a-f]{36}-/);
+  if (match) {
+    return slug.slice(match[0].length);
+  }
+  return slug;
+}
+
 /**
  * Escape a value for CSV output.
  * Wraps in double-quotes and escapes internal double-quotes.
