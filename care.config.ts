@@ -8,24 +8,13 @@ import Decimal from "decimal.js";
 const env = import.meta.env;
 
 /**
- * Parse API URL map from environment variable.
- * Maps frontend origins (including port) to backend URLs.
- * Example: '{"http://localhost:3000": "http://careapi.localhost"}'
- */
-const apiUrlMap: Record<string, string> = env.REACT_CARE_URL_MAP
-  ? JSON.parse(env.REACT_CARE_URL_MAP)
-  : {};
-
-/**
  * Resolve API URL based on current origin.
  * Priority: mapped URL for current origin > REACT_CARE_API_URL fallback
  */
 const resolveApiUrl = (): string => {
-  if (typeof window !== "undefined") {
-    const mappedUrl = apiUrlMap[window.location.origin];
-    if (mappedUrl) return mappedUrl;
-  }
-  return env.REACT_CARE_API_URL ?? "";
+  const coreEnv = (window as Window & { __CORE_ENV__?: { apiUrl?: string } })
+    .__CORE_ENV__;
+  return coreEnv?.apiUrl ?? env.REACT_CARE_API_URL ?? "";
 };
 
 const careConfig = {

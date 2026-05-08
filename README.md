@@ -320,7 +320,7 @@ This can be done via CSV upload or by loading a pre-built dataset (if one is con
 
 **Required columns (in this exact order):**
 
-1. `resourceCategory` — Category name (e.g. `Medication`, `Consumable`). Not neeeded/ignored for instance.
+1. `resourceCategory` — Category name (e.g. `Medication`, `Consumable`). Not needed/ignored for instance.
 2. `slug` — Unique short ID (see [What Is a Slug?](#what-is-a-slug))
 3. `name` — Product name (e.g. "Paracetamol 500mg Tablet")
 4. `productType` — One of: `medication`, `consumable`, `nutritional_product`

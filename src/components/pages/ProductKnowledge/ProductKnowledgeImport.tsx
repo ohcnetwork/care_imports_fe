@@ -116,10 +116,6 @@ export default function ProductKnowledgeImportNew({
       },
 
       createResource: async (row) => {
-        if (!facilityId)
-          console.log(
-            "Facility Id missing, proceeding with instance level import",
-          );
         let categorySlug: string | undefined;
 
         if (facilityId) {
@@ -151,11 +147,6 @@ export default function ProductKnowledgeImportNew({
       },
 
       updateResource: async (_id, row) => {
-        if (!facilityId)
-          console.log(
-            "Facility Id missing, proceeding with instance level import",
-          );
-
         let categorySlug: string | undefined;
 
         if (facilityId) {
@@ -197,6 +188,12 @@ export default function ProductKnowledgeImportNew({
     return base;
   }, [facilityId, category]);
 
+  const requiredHeaders = useMemo(() => {
+    return PK_REQUIRED_HEADERS.filter(
+      (h) => !((!facilityId || category?.slug) && h === "resourceCategory"),
+    );
+  }, [facilityId, category]);
+
   // ─── CSV Import Config ───────────────────────────────────────────
   const csvImportConfig: ImportConfig<ProductKnowledgeRow, { slug: string }> =
     useMemo(() => {
@@ -206,9 +203,7 @@ export default function ProductKnowledgeImportNew({
         // Parsing
         // For CSV imports, resource category can come from either the picker or the CSV itself. If both are present, the picker's value takes precedence and the CSV value is ignored.
         // If facilityId is not present, resource category is ignored since categories are facility-scoped.
-        requiredHeaders: PK_REQUIRED_HEADERS.filter(
-          (h) => !((!facilityId || category?.slug) && h === "resourceCategory"),
-        ),
+        requiredHeaders,
         headerMap: PK_HEADER_MAP,
         schema: getProductKnowledgeRowSchema(facilityId),
         parseRow: (row: string[], headerIndices: Record<string, number>) =>
@@ -217,7 +212,7 @@ export default function ProductKnowledgeImportNew({
         // UI
         description: "Upload a CSV file to import product knowledge entries.",
         uploadHints: [
-          `Required columns: ${PK_REQUIRED_HEADERS.join(", ")}`,
+          `Required columns: ${requiredHeaders.join(", ")}`,
           "Product types: medication, consumable, nutritional_product",
           "Existing items with same slug will be updated",
         ],
@@ -225,7 +220,7 @@ export default function ProductKnowledgeImportNew({
 
         reviewColumns: getReviewColumns(category?.title),
       };
-    }, [createBaseConfig, category]);
+    }, [createBaseConfig, category, requiredHeaders]);
 
   // ─── Master Import Config ────────────────────────────────────────
   const masterImportConfig: ImportConfig<
@@ -263,7 +258,7 @@ export default function ProductKnowledgeImportNew({
     return (
       <div className="flex flex-col gap-2">
         {!facilityId && (
-          <span className="text-normal bg-yellow-50 border border-yellow-200 p-2 rounded">
+          <span className="bg-yellow-50 border border-yellow-200 p-2 rounded">
             Facility not selected, imports will be created at instance level.
           </span>
         )}
