@@ -133,7 +133,7 @@ function LocationExportInner({ facilityId }: { facilityId: string }) {
     queryKey: ["export", "locations", facilityId],
     queryFn: async ({ pageParam = 0 }) => {
       return await request(locationApi.list, {
-        pathParams: { facilityId },
+        pathParams: { facility_id: facilityId },
         queryParams: { limit: PAGE_SIZE, offset: pageParam },
       });
     },

@@ -424,3 +424,205 @@ test.describe("Product Knowledge Import", () => {
     }
   });
 });
+
+// ─── Instance-Level Import (No Facility) ──────────────────────────
+const INSTANCE_HEADERS = [
+  "slug",
+  "name",
+  "productType",
+  "baseUnitDisplay",
+] as const;
+
+function makeInstanceRow(
+  suffix: string | number,
+  overrides: Partial<Record<(typeof INSTANCE_HEADERS)[number], string>> = {},
+): string[] {
+  const defaults = {
+    slug: `test-pk-inst-${suffix}`,
+    name: `Test PK Instance ${suffix}`,
+    productType: "medication",
+    baseUnitDisplay: "tablets",
+  };
+  const merged = { ...defaults, ...overrides };
+  return INSTANCE_HEADERS.map((h) => merged[h]);
+}
+
+test.describe("Product Knowledge Instance-Level Import", () => {
+  test.beforeEach(async ({ page }) => {
+    await goToImport(page, "product-knowledge", {
+      disableFacilitySelect: true,
+    });
+  });
+
+  test("should show instance-level warning when no facility selected", async ({
+    page,
+  }) => {
+    await expect(
+      page.getByText(/facility not selected.*instance level/i),
+    ).toBeVisible();
+  });
+
+  test("should not show category picker without facility", async ({ page }) => {
+    await expect(
+      page.getByRole("combobox").filter({ hasText: /select a category/i }),
+    ).not.toBeVisible();
+  });
+
+  test("should not require resourceCategory header at instance level", async ({
+    page,
+  }) => {
+    const suffix = Date.now();
+    const csvPath = createTempCsv(
+      [...INSTANCE_HEADERS],
+      [makeInstanceRow(suffix)],
+    );
+
+    try {
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { validCount: 1, totalCount: 1 });
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  test("should upload valid CSV and import at instance level", async ({
+    page,
+    request,
+  }) => {
+    const suffix = Date.now();
+    const uniqueSlug = `test-pk-inst-${suffix}`;
+    const uniqueName = `Test PK Instance ${suffix}`;
+    const csvPath = createTempCsv(
+      [...INSTANCE_HEADERS],
+      [makeInstanceRow(suffix, { slug: uniqueSlug, name: uniqueName })],
+    );
+
+    try {
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { validCount: 1, totalCount: 1 });
+      await clickImportButton(page);
+      await expectImportSuccess(page);
+
+      // Verify via API using instance-level slug format (i-{slug})
+      const results = await fetchApiResults<{
+        name: string;
+        slug_config: { slug_value: string };
+      }>(request, `/api/v1/product_knowledge/i-${uniqueSlug}`, {
+        paginated: false,
+      });
+      expect(results.name).toBe(uniqueName);
+      expect(results.slug_config.slug_value).toBe(uniqueSlug);
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  test("should accept CSV with resourceCategory column but ignore it at instance level", async ({
+    page,
+    request,
+  }) => {
+    const suffix = Date.now();
+    const uniqueSlug = `test-pk-inst-cat-${suffix}`;
+    const uniqueName = `Test PK Instance Cat ${suffix}`;
+    const csvPath = createTempCsv(
+      [...ALL_HEADERS],
+      [
+        makeValidPkRow(suffix, {
+          slug: uniqueSlug,
+          name: uniqueName,
+          resourceCategory: "SomeCategory",
+        }),
+      ],
+    );
+
+    try {
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { validCount: 1, totalCount: 1 });
+      await clickImportButton(page);
+      await expectImportSuccess(page);
+
+      // Verify the resource exists at instance level with no category
+      const results = await fetchApiResults<{
+        name: string;
+        category?: { slug: string } | null;
+      }>(request, `/api/v1/product_knowledge/i-${uniqueSlug}`, {
+        paginated: false,
+      });
+      expect(results.name).toBe(uniqueName);
+      expect(results.category).toBeFalsy();
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  test("should still validate slug format at instance level", async ({
+    page,
+  }) => {
+    const csvPath = createTempCsv(
+      [...INSTANCE_HEADERS],
+      [makeInstanceRow("bad", { slug: "Invalid Slug!" })],
+    );
+
+    try {
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { invalidCount: 1 });
+      await expectValidationError(page, /slug must contain only/i);
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  test("should still validate product type at instance level", async ({
+    page,
+  }) => {
+    const csvPath = createTempCsv(
+      [...INSTANCE_HEADERS],
+      [makeInstanceRow("bad", { productType: "invalid_type" })],
+    );
+
+    try {
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { invalidCount: 1 });
+      await expectValidationError(page, /medication|consumable|nutritional/i);
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  test("should still show error for invalid base unit at instance level", async ({
+    page,
+  }) => {
+    const csvPath = createTempCsv(
+      [...INSTANCE_HEADERS],
+      [makeInstanceRow("bad", { baseUnitDisplay: "invalid_unit" })],
+    );
+
+    try {
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { invalidCount: 1 });
+      await expectValidationError(page, /could not resolve base unit/i);
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+
+  test("should still show error for duplicate slugs at instance level", async ({
+    page,
+  }) => {
+    const csvPath = createTempCsv(
+      [...INSTANCE_HEADERS],
+      [
+        makeInstanceRow("dup", { slug: "same-slug-inst" }),
+        makeInstanceRow("dup2", { slug: "same-slug-inst" }),
+      ],
+    );
+
+    try {
+      await uploadCsvFile(page, csvPath);
+      await expectReviewTable(page, { invalidCount: 2 });
+      await expectValidationError(page, /duplicate slug/i);
+    } finally {
+      cleanupTempFile(csvPath);
+    }
+  });
+});

@@ -119,7 +119,10 @@ export default function ExportsLayout({
   }, []);
 
   const tabs = getTabConfig();
-  const requiresFacility = activeTab !== "users";
+  const requiresFacility =
+    activeTab !== "users" &&
+    activeTab !== "valuesets" &&
+    activeTab !== "product-knowledge";
   const canRenderContent = !requiresFacility || Boolean(selectedFacilityId);
   const content = React.isValidElement(children)
     ? React.cloneElement(

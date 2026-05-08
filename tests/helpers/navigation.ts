@@ -20,7 +20,7 @@ export type ImportTab =
 export async function goToImport(
   page: Page,
   tab: ImportTab,
-  options?: { facilityName?: string },
+  options?: { facilityName?: string; disableFacilitySelect?: boolean },
 ) {
   await page.goto(`/admin/import/${tab}`);
 
@@ -41,7 +41,7 @@ export async function goToImport(
 
   // Most tabs require a facility selection — select the first one if not specified
   const noFacilityTabs: ImportTab[] = ["users", "valuesets"];
-  if (!noFacilityTabs.includes(tab)) {
+  if (!noFacilityTabs.includes(tab) && !options?.disableFacilitySelect) {
     if (!options?.facilityName) {
       const { name } = getFacility();
       options = { ...options, facilityName: name };

@@ -96,8 +96,9 @@ export default function ProductKnowledgeImportNew({
       validateRows: validateProductKnowledgeRows,
 
       checkExists: async (row) => {
-        if (!facilityId) return undefined;
-        const pkSlug = `f-${facilityId}-${row.slug}`;
+        const pkSlug = facilityId
+          ? `f-${facilityId}-${row.slug}`
+          : `i-${row.slug}`;
         try {
           const existing = await request(
             productKnowledgeApi.retrieveProductKnowledge,
@@ -115,25 +116,26 @@ export default function ProductKnowledgeImportNew({
       },
 
       createResource: async (row) => {
-        if (!facilityId) throw new Error("Facility ID is required");
+        let categorySlug: string | undefined;
 
-        let categorySlug: string = "";
-
-        if (category?.slug) {
-          // Picker category takes precedence
-          categorySlug = category.slug;
-        } else if (row.resourceCategory) {
-          if (!categorySlugMap.has(normalizeCategory(row.resourceCategory))) {
-            const newMap = await upsertResourceCategories({
-              facilityId,
-              categories: [row.resourceCategory],
-              resourceType: ResourceCategoryResourceType.product_knowledge,
-              slugPrefix: "pk",
-            });
-            newMap.forEach((slug, key) => categorySlugMap.set(key, slug));
+        if (facilityId) {
+          if (category?.slug) {
+            // Picker category takes precedence
+            categorySlug = category.slug;
+          } else if (row.resourceCategory) {
+            if (!categorySlugMap.has(normalizeCategory(row.resourceCategory))) {
+              const newMap = await upsertResourceCategories({
+                facilityId,
+                categories: [row.resourceCategory],
+                resourceType: ResourceCategoryResourceType.product_knowledge,
+                slugPrefix: "pk",
+              });
+              newMap.forEach((slug, key) => categorySlugMap.set(key, slug));
+            }
+            categorySlug =
+              categorySlugMap.get(normalizeCategory(row.resourceCategory)) ??
+              "";
           }
-          categorySlug =
-            categorySlugMap.get(normalizeCategory(row.resourceCategory)) ?? "";
         }
 
         const payload = toProductKnowledgeCreatePayload(
@@ -145,24 +147,25 @@ export default function ProductKnowledgeImportNew({
       },
 
       updateResource: async (_id, row) => {
-        if (!facilityId) throw new Error("Facility ID is required");
+        let categorySlug: string | undefined;
 
-        let categorySlug: string = "";
-
-        if (category?.slug) {
-          categorySlug = category.slug;
-        } else if (row?.resourceCategory) {
-          if (!categorySlugMap.has(normalizeCategory(row.resourceCategory))) {
-            const newMap = await upsertResourceCategories({
-              facilityId,
-              categories: [row.resourceCategory],
-              resourceType: ResourceCategoryResourceType.product_knowledge,
-              slugPrefix: "pk",
-            });
-            newMap.forEach((slug, key) => categorySlugMap.set(key, slug));
+        if (facilityId) {
+          if (category?.slug) {
+            categorySlug = category.slug;
+          } else if (row?.resourceCategory) {
+            if (!categorySlugMap.has(normalizeCategory(row.resourceCategory))) {
+              const newMap = await upsertResourceCategories({
+                facilityId,
+                categories: [row.resourceCategory],
+                resourceType: ResourceCategoryResourceType.product_knowledge,
+                slugPrefix: "pk",
+              });
+              newMap.forEach((slug, key) => categorySlugMap.set(key, slug));
+            }
+            categorySlug =
+              categorySlugMap.get(normalizeCategory(row.resourceCategory)) ??
+              "";
           }
-          categorySlug =
-            categorySlugMap.get(normalizeCategory(row.resourceCategory)) ?? "";
         }
 
         const payload = toProductKnowledgeCreatePayload(
@@ -171,7 +174,9 @@ export default function ProductKnowledgeImportNew({
           categorySlug,
         );
 
-        const pkSlug = `f-${facilityId}-${row.slug}`;
+        const pkSlug = facilityId
+          ? `f-${facilityId}-${row.slug}`
+          : `i-${row.slug}`;
         await mutate(productKnowledgeApi.updateProductKnowledge, {
           pathParams: { slug: pkSlug },
         })(payload);
@@ -183,6 +188,12 @@ export default function ProductKnowledgeImportNew({
     return base;
   }, [facilityId, category]);
 
+  const requiredHeaders = useMemo(() => {
+    return PK_REQUIRED_HEADERS.filter(
+      (h) => !((!facilityId || category?.slug) && h === "resourceCategory"),
+    );
+  }, [facilityId, category]);
+
   // ─── CSV Import Config ───────────────────────────────────────────
   const csvImportConfig: ImportConfig<ProductKnowledgeRow, { slug: string }> =
     useMemo(() => {
@@ -190,18 +201,18 @@ export default function ProductKnowledgeImportNew({
         ...createBaseConfig(),
 
         // Parsing
-        requiredHeaders: PK_REQUIRED_HEADERS.filter(
-          (h) => !(category?.slug && h === "resourceCategory"),
-        ),
+        // For CSV imports, resource category can come from either the picker or the CSV itself. If both are present, the picker's value takes precedence and the CSV value is ignored.
+        // If facilityId is not present, resource category is ignored since categories are facility-scoped.
+        requiredHeaders,
         headerMap: PK_HEADER_MAP,
-        schema: getProductKnowledgeRowSchema(),
+        schema: getProductKnowledgeRowSchema(facilityId),
         parseRow: (row: string[], headerIndices: Record<string, number>) =>
           parseProductKnowledgeRow(row, headerIndices, category?.slug),
 
         // UI
         description: "Upload a CSV file to import product knowledge entries.",
         uploadHints: [
-          `Required columns: ${PK_REQUIRED_HEADERS.join(", ")}`,
+          `Required columns: ${requiredHeaders.join(", ")}`,
           "Product types: medication, consumable, nutritional_product",
           "Existing items with same slug will be updated",
         ],
@@ -209,7 +220,7 @@ export default function ProductKnowledgeImportNew({
 
         reviewColumns: getReviewColumns(category?.title),
       };
-    }, [createBaseConfig, category]);
+    }, [createBaseConfig, category, requiredHeaders]);
 
   // ─── Master Import Config ────────────────────────────────────────
   const masterImportConfig: ImportConfig<
@@ -245,91 +256,100 @@ export default function ProductKnowledgeImportNew({
   if (activeView.kind === "upload" || activeView.kind === "csv-flow") {
     const showGrid = activeView.kind === "upload";
     return (
-      <div
-        className={
-          showGrid
-            ? "max-w-5xl mx-auto grid gap-3 md:grid-cols-2 items-stretch"
-            : ""
-        }
-      >
-        <div className="flex flex-col gap-2">
-          {facilityId && showGrid && (
-            <>
-              <ResourceCategoryPicker
-                facilityId={facilityId || ""}
-                resourceType={ResourceCategoryResourceType.product_knowledge}
-                resourceSubType={ResourceCategorySubType.other}
-                value={category?.slug}
-                onValueChange={(cat) => setCategory(cat)}
-                placeholder="Select a category (optional, overrides CSV)"
-              />
-              <label className="text-xs text-gray-500">
-                (Optional) Select a category for the product knowledges being
-                imported. Do note that this will{" "}
-                <span className="font-semibold">
-                  override any category specified in the CSV
-                </span>
-                .
-              </label>
-            </>
-          )}
-          <ImportFlow
-            config={csvImportConfig}
-            disableUpload={disableManualUpload}
-            disabledMessage="Manual uploads are disabled because this build includes a product knowledge dataset in the repository."
-            onStepChange={(step) =>
-              setActiveView({ kind: step === "upload" ? "upload" : "csv-flow" })
-            }
-          />
-        </div>
-
-        {/* Master Data Card */}
-        {showGrid && (
-          <Card className="h-full flex flex-col">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Database className="h-5 w-5" />
-                Import Product Knowledge from dataset
-              </CardTitle>
-              <CardDescription>
-                Import data for Product Knowledge from available master dataset.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-row gap-4 flex-1">
-              <div className="rounded-lg border border-gray-200 px-6 py-12 text-center w-full flex flex-col items-center justify-between">
-                <div className="flex flex-col items-center gap-4 flex-1 justify-center">
-                  <Database className="h-12 w-12 text-gray-400" />
-                  {hasMasterFiles ? (
-                    <>
-                      <p className="text-lg font-medium text-gray-600">
-                        Upload from master dataset
+      <div className="flex flex-col gap-2">
+        {!facilityId && (
+          <span className="bg-yellow-50 border border-yellow-200 p-2 rounded">
+            Facility not selected, imports will be created at instance level.
+          </span>
+        )}
+        <div
+          className={
+            showGrid
+              ? "max-w-5xl mx-auto grid gap-3 md:grid-cols-2 items-stretch"
+              : ""
+          }
+        >
+          <div className="flex flex-col gap-2">
+            {showGrid && facilityId && (
+              <>
+                <ResourceCategoryPicker
+                  facilityId={facilityId}
+                  resourceType={ResourceCategoryResourceType.product_knowledge}
+                  resourceSubType={ResourceCategorySubType.other}
+                  value={category?.slug}
+                  onValueChange={(cat) => setCategory(cat)}
+                  placeholder="Select a category (optional, overrides CSV)"
+                />
+                <label className="text-xs text-gray-500">
+                  (Optional) Select a category for the product knowledges being
+                  imported. Do note that this will{" "}
+                  <span className="font-semibold">
+                    override any category specified in the CSV
+                  </span>
+                  .
+                </label>
+              </>
+            )}
+            <ImportFlow
+              config={csvImportConfig}
+              disableUpload={disableManualUpload}
+              disabledMessage="Manual uploads are disabled because this build includes a product knowledge dataset in the repository."
+              onStepChange={(step) =>
+                setActiveView({
+                  kind: step === "upload" ? "upload" : "csv-flow",
+                })
+              }
+            />
+          </div>
+          {/* Master Data Card */}
+          {showGrid && (
+            <Card className="h-full flex flex-col">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-5 w-5" />
+                  Import Product Knowledge from dataset
+                </CardTitle>
+                <CardDescription>
+                  Import data for Product Knowledge from available master
+                  dataset.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-row gap-4 flex-1">
+                <div className="rounded-lg border border-gray-200 px-6 py-12 text-center w-full flex flex-col items-center justify-between">
+                  <div className="flex flex-col items-center gap-4 flex-1 justify-center">
+                    <Database className="h-12 w-12 text-gray-400" />
+                    {hasMasterFiles ? (
+                      <>
+                        <p className="text-lg font-medium text-gray-600">
+                          Upload from master dataset
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          A bundled dataset is available in this build.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-gray-600 text-sm">
+                        No bundled dataset was detected for this build. Upload a
+                        CSV file to import manually.
                       </p>
-                      <p className="text-xs text-gray-400">
-                        A bundled dataset is available in this build.
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-gray-600 text-sm">
-                      No bundled dataset was detected for this build. Upload a
-                      CSV file to import manually.
-                    </p>
+                    )}
+                  </div>
+                  {hasMasterFiles && (
+                    <div className="mt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setActiveView({ kind: "master-select" })}
+                      >
+                        Import Master Data
+                      </Button>
+                    </div>
                   )}
                 </div>
-                {hasMasterFiles && (
-                  <div className="mt-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setActiveView({ kind: "master-select" })}
-                    >
-                      Import Master Data
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
     );
   }
