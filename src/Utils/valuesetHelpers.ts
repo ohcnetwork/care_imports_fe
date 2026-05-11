@@ -4,8 +4,8 @@ import type {
   ValueSetCreate,
   ValueSetFilter,
   ValueSetInclude,
-} from "@/types/valueSet/valueSet";
-import { TERMINOLOGY_SYSTEMS, ValueSetStatus } from "@/types/valueSet/valueSet";
+} from "@/types/valueSet/valueset";
+import { TERMINOLOGY_SYSTEMS, ValueSetStatus } from "@/types/valueSet/valueset";
 import valueSetApi from "@/types/valueSet/valueSetApi";
 import { parseCsvText } from "@/Utils/csv";
 import { isUrlSafeSlug } from "@/Utils/slug";

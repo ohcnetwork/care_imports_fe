@@ -11,14 +11,14 @@ import {
 } from "@/types/emr/specimenDefinition/specimenDefinition";
 import { parseSpecimenDefinitionCsv } from "@/Utils/masterImport/specimenDefinition";
 
+import { request } from "@/apis/request";
 import {
   CodeSchema,
   normalizeHeader,
   zodDecimal,
 } from "@/internalTypes/common";
-import valueSetApi from "../../../types/valueset/valueSetApi";
 import { Code } from "@/types/base/code/code";
-import { request } from "@/apis/request";
+import valueSetApi from "@/types/valueSet/valueSetApi";
 
 export interface SpecimenDefinitionImportProps {
   facilityId?: string;
