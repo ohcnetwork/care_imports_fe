@@ -1,5 +1,6 @@
 import { RESULTS_PER_PAGE_LIMIT } from "@/common/constants";
 
+import { formatHttpError } from "@/Utils/request/errorHandler";
 import {
   ApiCallOptions,
   ApiRoute,
@@ -55,11 +56,12 @@ export async function callApi<Route extends ApiRoute<unknown, unknown>>(
         ? options.silent(res)
         : (options?.silent ?? false);
 
+    const cause = data as unknown as Record<string, unknown>;
     throw new HTTPError({
-      message: "Request Failed",
+      message: formatHttpError(cause),
       status: res.status,
       silent: isSilent,
-      cause: data as unknown as Record<string, unknown>,
+      cause,
     });
   }
 
