@@ -1,4 +1,5 @@
 import { HttpError, request } from "@/apis/request";
+import { normalizeHeader } from "@/internalTypes/common";
 import type {
   ValueSetConcept,
   ValueSetCreate,
@@ -95,13 +96,6 @@ export interface ValueSetImportResults {
   failed: number;
   failures: { slug: string; name?: string; reason: string }[];
 }
-
-// ---------------------------------------------------------------------------
-// Normalise header for matching
-// ---------------------------------------------------------------------------
-
-const normalizeHeader = (header: string) =>
-  header.toLowerCase().replace(/[^a-z0-9_]/g, "");
 
 // ---------------------------------------------------------------------------
 // Parse + validate CSV

@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { normalizeHeader } from "@/internalTypes/common";
 import roleApi from "@/types/emr/role/roleApi";
 import facilityOrganizationApi from "@/types/facilityOrganization/facilityOrganizationApi";
 import userApi from "@/types/user/userApi";
@@ -47,9 +48,6 @@ interface LinkUserPair {
   roleId?: string;
   departmentId?: string;
 }
-
-const normalizeHeader = (value: string) =>
-  value.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 const buildHeaderMap = (headers: string[]) => {
   const headerMap: Record<
