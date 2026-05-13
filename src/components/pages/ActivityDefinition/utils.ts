@@ -1,4 +1,5 @@
 import { request } from "@/apis/request";
+import { getCellValue } from "@/internalTypes/common";
 import type { ProcessedRow } from "@/internalTypes/importConfig";
 import { ResourceCategoryResourceType } from "@/types/base/resourceCategory/resourceCategory";
 import {
@@ -13,9 +14,10 @@ import {
   type ResolvedRow,
   stripMappingErrors,
 } from "@/Utils/activityDefinitionHelper";
+import { parseCsvText } from "@/Utils/csv";
 import { normalizeName } from "@/Utils/importHelpers";
-import { parseActivityDefinitionCsv } from "@/Utils/masterImport/activityDefinition";
 import { upsertResourceCategories } from "@/Utils/resourceCategory";
+import { isUrlSafeSlug } from "@/Utils/slug";
 import { z } from "zod";
 
 import type { ReviewColumn } from "@/internalTypes/importConfig";
@@ -143,13 +145,57 @@ export const getActivityDefinitionCsvRowSchema = () =>
       }
     });
 
-// ─── CSV Row Parser ───────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────
 
-function splitCellValues(value: string): string[] {
-  return value
+export const ACTIVITY_STATUSES = [
+  "draft",
+  "active",
+  "retired",
+  "unknown",
+] as const;
+export const ACTIVITY_CLASSIFICATIONS = [
+  "laboratory",
+  "imaging",
+  "surgical_procedure",
+  "counselling",
+] as const;
+export const ACTIVITY_KIND = "service_request";
+
+// ─── Helpers ──────────────────────────────────────────────────────
+
+export function splitCellValues(value?: string): string[] {
+  return (value ?? "")
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+const isNonEmptyString = (value: unknown) =>
+  typeof value === "string" && value.trim().length > 0;
+
+function buildOptionalCodeWithErrors(
+  system: string | undefined,
+  code: string | undefined,
+  display: string | undefined,
+  errors: string[],
+  label: string,
+  defaultSystem?: string,
+) {
+  const trimmedCode = code?.trim();
+  const trimmedDisplay = display?.trim();
+  if (!trimmedCode && !trimmedDisplay) {
+    return null;
+  }
+  if (!trimmedCode || !trimmedDisplay) {
+    errors.push(`${label} requires both code and display if provided`);
+    return null;
+  }
+  const resolvedSystem = system?.trim() || defaultSystem;
+  if (!resolvedSystem) {
+    errors.push(`${label} requires system if provided`);
+    return null;
+  }
+  return { system: resolvedSystem, code: trimmedCode, display: trimmedDisplay };
 }
 
 function buildOptionalCode(
@@ -161,6 +207,8 @@ function buildOptionalCode(
   if (!code || !display) return null;
   return { system: system || "http://snomed.info/sct", code, display };
 }
+
+// ─── CSV Row Parser ───────────────────────────────────────────────
 
 export function parseActivityDefinitionCsvRow(
   row: string[],
@@ -541,11 +589,198 @@ export type ActivityDefinitionRow = ActivityDefinitionProcessedRow["data"] & {
   resolved?: ResolvedRow;
 };
 
-// ─── Parse ────────────────────────────────────────────────────────────────────
+// ─── Full CSV Parser ──────────────────────────────────────────────────────────
+
+export const parseActivityDefinitionCsv = (
+  csvText: string,
+  options: {
+    requireChargeItemPrice?: boolean;
+  } = {},
+): ActivityDefinitionProcessedRow[] => {
+  const { headers, rows } = parseCsvText(csvText);
+
+  if (headers.length === 0) {
+    throw new Error("CSV is empty or missing headers");
+  }
+
+  const headerMap = headers.reduce<Record<string, number>>(
+    (acc, header, index) => {
+      acc[normalizeHeader(header)] = index;
+      return acc;
+    },
+    {},
+  );
+
+  const missingHeaders = AD_REQUIRED_HEADERS.filter(
+    (header) => headerMap[normalizeHeader(header)] === undefined,
+  );
+
+  if (missingHeaders.length > 0) {
+    throw new Error(`Missing required headers: ${missingHeaders.join(", ")}`);
+  }
+
+  const slugSeen = new Map<string, number>();
+
+  return rows.map((row, index) => {
+    const errors: string[] = [];
+    const title = getCellValue(row, headerMap, "title").trim();
+    const slugValue = getCellValue(row, headerMap, "slug_value").trim();
+    const description = getCellValue(row, headerMap, "description").trim();
+    const usage = getCellValue(row, headerMap, "usage").trim();
+    const status = getCellValue(row, headerMap, "status").trim();
+    const classification = getCellValue(
+      row,
+      headerMap,
+      "classification",
+    ).trim();
+    const categoryName = getCellValue(row, headerMap, "category_name").trim();
+    const codeSystem = getCellValue(row, headerMap, "code_system").trim();
+    const codeValue = getCellValue(row, headerMap, "code_value").trim();
+    const codeDisplay = getCellValue(row, headerMap, "code_display").trim();
+    const chargeItemPrice = getCellValue(
+      row,
+      headerMap,
+      "charge_item_price",
+    ).trim();
+
+    if (!title) errors.push("Missing title");
+    if (!slugValue) {
+      errors.push("Missing slug_value");
+    } else {
+      if (!isUrlSafeSlug(slugValue)) {
+        errors.push(
+          `slug_value "${slugValue}" contains invalid characters (only lowercase letters, digits, hyphens, and underscores are allowed)`,
+        );
+      }
+      const prevRow = slugSeen.get(slugValue);
+      if (prevRow !== undefined) {
+        errors.push(
+          `Duplicate slug_value "${slugValue}" (first seen in row ${prevRow})`,
+        );
+      } else {
+        slugSeen.set(slugValue, index + 2);
+      }
+    }
+    if (!description) errors.push("Missing description");
+    if (!usage) errors.push("Missing usage");
+    if (!categoryName) errors.push("Missing category name");
+    if (!codeValue || !codeDisplay) {
+      errors.push("Missing code value/display");
+    }
+
+    const resolvedStatus = status || "active";
+    if (!ACTIVITY_STATUSES.includes(resolvedStatus as never)) {
+      errors.push("Invalid status value");
+    }
+
+    const resolvedClassification = classification || "laboratory";
+    if (!ACTIVITY_CLASSIFICATIONS.includes(resolvedClassification as never)) {
+      errors.push("Invalid classification value");
+    }
+
+    const resolvedCodeSystem = codeSystem.trim() || "http://snomed.info/sct";
+
+    const bodySite = buildOptionalCodeWithErrors(
+      getCellValue(row, headerMap, "body_site_system").trim(),
+      getCellValue(row, headerMap, "body_site_code").trim(),
+      getCellValue(row, headerMap, "body_site_display").trim(),
+      errors,
+      "Body site",
+    );
+
+    const diagnosticSystems = splitCellValues(
+      getCellValue(row, headerMap, "diagnostic_report_system").trim(),
+    );
+    const diagnosticCodes = splitCellValues(
+      getCellValue(row, headerMap, "diagnostic_report_code").trim(),
+    );
+    const diagnosticDisplays = splitCellValues(
+      getCellValue(row, headerMap, "diagnostic_report_display").trim(),
+    );
+    const hasDiagnosticValues =
+      diagnosticSystems.length > 0 ||
+      diagnosticCodes.length > 0 ||
+      diagnosticDisplays.length > 0;
+    let diagnosticReportCodes: Code[] = [];
+
+    if (hasDiagnosticValues) {
+      if (
+        !diagnosticSystems.length ||
+        !diagnosticCodes.length ||
+        !diagnosticDisplays.length
+      ) {
+        errors.push("Diagnostic report requires system, code, and display");
+      } else if (
+        diagnosticSystems.length !== diagnosticCodes.length ||
+        diagnosticCodes.length !== diagnosticDisplays.length
+      ) {
+        errors.push("Diagnostic report system/code/display counts must match");
+      } else {
+        diagnosticReportCodes = diagnosticCodes.map((code, index) => ({
+          system: diagnosticSystems[index],
+          code,
+          display: diagnosticDisplays[index],
+        }));
+      }
+    }
+
+    const data: ActivityDefinitionRow = {
+      title,
+      slug_value: slugValue,
+      description,
+      usage,
+      status: resolvedStatus,
+      classification: resolvedClassification,
+      kind: getCellValue(row, headerMap, "kind").trim() || ACTIVITY_KIND,
+      code: {
+        system: resolvedCodeSystem,
+        code: codeValue,
+        display: codeDisplay,
+      },
+      body_site: bodySite,
+      diagnostic_report_codes: diagnosticReportCodes,
+      derived_from_uri: getCellValue(row, headerMap, "derived_from_uri").trim(),
+      category_name: categoryName,
+      specimen_slugs: splitCellValues(
+        getCellValue(row, headerMap, "specimen_slugs").trim(),
+      ),
+      observation_slugs: splitCellValues(
+        getCellValue(row, headerMap, "observation_slugs").trim(),
+      ),
+      charge_item_slugs: splitCellValues(
+        getCellValue(row, headerMap, "charge_item_slugs").trim(),
+      ),
+      charge_item_price: chargeItemPrice,
+      location_names: splitCellValues(
+        getCellValue(row, headerMap, "location_names").trim(),
+      ),
+      healthcare_service_name: getCellValue(
+        row,
+        headerMap,
+        "healthcare_service_name",
+      ).trim(),
+    };
+
+    if (!isNonEmptyString(data.kind)) {
+      errors.push("Missing kind");
+    }
+
+    if (options.requireChargeItemPrice && !data.charge_item_price) {
+      errors.push("Missing charge item price");
+    }
+
+    return {
+      rowIndex: index + 2,
+      data,
+      errors,
+    };
+  });
+};
+
+// ─── Parse (ImportFlow wrapper) ───────────────────────────────────────────────
 
 /**
  * Parse CSV text into ProcessedRows for ImportFlow.
- * Wraps the existing parseActivityDefinitionCsv utility.
  */
 export function parseMasterCsvToRows(
   csvText: string,
