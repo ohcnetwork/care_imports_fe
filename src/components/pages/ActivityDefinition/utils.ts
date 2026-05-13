@@ -112,7 +112,8 @@ export const getActivityDefinitionCsvRowSchema = () =>
         .regex(
           /^[a-z0-9_-]+$/,
           "Slug must contain only lowercase letters, digits, hyphens, and underscores",
-        ),
+        )
+        .max(36, "Slug must be at most 36 characters"),
       description: z.string().min(1, "Description is required"),
       usage: z.string().min(1, "Usage is required"),
       status: z.nativeEnum(Status),

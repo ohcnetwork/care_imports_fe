@@ -44,9 +44,9 @@ type ActiveView =
  */
 function detectCsvPair(
   texts: string[],
-): { defsCsvText: string; compCsvText: string } | null {
-  let defsCsvText: string | null = null;
-  let compCsvText: string | null = null;
+): { defsCsvText: string; compCsvText: string | undefined } | undefined {
+  let defsCsvText: string | undefined = undefined;
+  let compCsvText: string | undefined = undefined;
 
   for (const text of texts) {
     const firstLine = text.split(/\r?\n/)[0] ?? "";
@@ -58,7 +58,7 @@ function detectCsvPair(
     }
   }
 
-  if (!defsCsvText || !compCsvText) return null;
+  if (!defsCsvText) return undefined;
   return { defsCsvText, compCsvText };
 }
 
@@ -174,14 +174,6 @@ export default function ObservationDefinitionImportNew({
 
       if (csvFiles.length === 0) {
         setUploadError("Please upload valid CSV files");
-        setUploadedFileName("");
-        return;
-      }
-
-      if (csvFiles.length !== 2) {
-        setUploadError(
-          "Please select exactly 2 CSV files: one for observation definitions and one for components.",
-        );
         setUploadedFileName("");
         return;
       }
