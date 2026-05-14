@@ -58,6 +58,8 @@ function detectCsvPair(
     }
   }
 
+  if (texts.length === 2 && (!defsCsvText || !compCsvText)) return undefined;
+
   if (!defsCsvText) return undefined;
   return { defsCsvText, compCsvText };
 }
