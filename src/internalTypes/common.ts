@@ -81,6 +81,15 @@ export function normalizeHeader(header: string): string {
   return header.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+export const getCellValue = (
+  row: string[],
+  headerMap: Record<string, number>,
+  key: string,
+) => {
+  const index = headerMap[normalizeHeader(key)];
+  return index === undefined ? "" : (row[index] ?? "");
+};
+
 export function buildHeaderMap(
   headers: string[],
   headerMapping: Record<string, string>,

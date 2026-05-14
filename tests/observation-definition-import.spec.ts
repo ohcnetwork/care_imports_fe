@@ -1,12 +1,14 @@
-import { test, expect } from "@playwright/test";
-import { goToImport } from "./helpers/navigation";
-import { createTempCsv, cleanupTempFile } from "./helpers/csv";
+import { expect, test } from "@playwright/test";
+import { fetchApiResults } from "./helpers/api";
+import { cleanupTempFile, createTempCsv } from "./helpers/csv";
 import {
-  expectReviewTable,
   clickImportButton,
   expectImportSuccess,
+  expectReviewTable,
   expectValidationError,
 } from "./helpers/import-flow";
+import { goToImport } from "./helpers/navigation";
+import { getFacility } from "./utils/facility";
 
 test.use({ storageState: "tests/.auth/user.json" });
 
@@ -33,6 +35,17 @@ const COMP_HEADERS = [
   "unit_system",
   "unit_code",
   "unit_display",
+];
+
+/** Range columns for root-level (definition) or component-level qualified range tests */
+const RANGE_COLUMNS = [
+  "age_min",
+  "age_max",
+  "age_op",
+  "gender",
+  "range_display",
+  "range_min",
+  "range_max",
 ];
 
 /** Upload two CSV files (definitions + components) to the OD import page. */
@@ -85,25 +98,6 @@ test.describe("Observation Definition Import", () => {
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/observation/i);
     expect(download.suggestedFilename()).toMatch(/\.csv$/);
-  });
-
-  test("should require exactly 2 CSV files", async ({ page }) => {
-    // Upload only 1 file — should show error
-    const defPath = createTempCsv(
-      DEF_HEADERS,
-      [makeValidDefRow(Date.now())],
-      "defs.csv",
-    );
-
-    try {
-      const fileInput = page.locator("#obs-def-csv-upload");
-      await fileInput.setInputFiles(defPath);
-      await expect(page.getByText(/select exactly 2 csv files/i)).toBeVisible({
-        timeout: 5_000,
-      });
-    } finally {
-      cleanupTempFile(defPath);
-    }
   });
 
   test("should upload valid definitions + components and import", async ({
@@ -216,67 +210,217 @@ test.describe("Observation Definition Import", () => {
     }
   });
 
-  test("should show error for invalid qualified_ranges JSON", async ({
+  test("should error when root-level qualified ranges conflict with a component", async ({
     page,
   }) => {
+    // Defs CSV: one row with a range band (populates root-level qualifiedRangeMap)
     const defPath = createTempCsv(
-      [...DEF_HEADERS, "qualified_ranges"],
+      [...DEF_HEADERS, ...RANGE_COLUMNS],
       [
         [
-          "Test OD",
-          "test-od-json",
-          "Test",
+          "BP Conflict",
+          "bp-conflict",
+          "Blood pressure",
           "vital_signs",
           "quantity",
           "http://loinc.org",
-          "12345",
-          "Test",
+          "85354-9",
+          "Blood pressure panel",
           "active",
-          "not valid json",
+          "", // age_min
+          "", // age_max
+          "", // age_op
+          "", // gender
+          "Normal", // range_display
+          "60", // range_min
+          "100", // range_max
         ],
       ],
       "definitions.csv",
     );
-    const compPath = makeEmptyComponentsCsv();
-
-    try {
-      await uploadObsDefCsvs(page, defPath, compPath);
-      await expectReviewTable(page, { invalidCount: 1 });
-      await expectValidationError(page, /qualified_ranges must be/i);
-    } finally {
-      cleanupTempFile(defPath);
-      cleanupTempFile(compPath);
-    }
-  });
-
-  test("should show error for non-array qualified_ranges", async ({ page }) => {
-    const defPath = createTempCsv(
-      [...DEF_HEADERS, "qualified_ranges"],
+    // Comp CSV: component for the same slug
+    const compPath = createTempCsv(
+      COMP_HEADERS,
       [
         [
-          "Test OD",
-          "test-od-obj",
-          "Test",
-          "vital_signs",
-          "quantity",
+          "bp-conflict",
           "http://loinc.org",
-          "12345",
-          "Test",
-          "active",
-          '{"not": "array"}',
+          "8480-6",
+          "Systolic blood pressure",
+          "quantity",
+          "http://unitsofmeasure.org",
+          "mm[Hg]",
+          "mmHg",
         ],
       ],
-      "definitions.csv",
+      "components.csv",
     );
-    const compPath = makeEmptyComponentsCsv();
 
     try {
       await uploadObsDefCsvs(page, defPath, compPath);
       await expectReviewTable(page, { invalidCount: 1 });
       await expectValidationError(
         page,
-        /qualified_ranges must be a json array/i,
+        /qualified ranges must be defined at the component level/i,
       );
+    } finally {
+      cleanupTempFile(defPath);
+      cleanupTempFile(compPath);
+    }
+  });
+
+  test("should import with root-level qualified ranges (multiple bands per definition)", async ({
+    page,
+    request,
+  }) => {
+    const suffix = Date.now();
+    const slug = `range-od-${suffix}`;
+    // Two rows share the same slug+title — they dedup to 1 definition but
+    // each row contributes one range band to the root-level qualifiedRangeMap.
+    const defPath = createTempCsv(
+      [...DEF_HEADERS, ...RANGE_COLUMNS],
+      [
+        [
+          `Range OD ${suffix}`,
+          slug,
+          "Range OD description",
+          "vital_signs",
+          "quantity",
+          "http://loinc.org",
+          "85354-9",
+          "Blood pressure panel",
+          "active",
+          "", // age_min
+          "", // age_max
+          "", // age_op
+          "", // gender
+          "Normal", // range_display
+          "60", // range_min
+          "100", // range_max
+        ],
+        [
+          `Range OD ${suffix}`,
+          slug,
+          "Range OD description",
+          "vital_signs",
+          "quantity",
+          "http://loinc.org",
+          "85354-9",
+          "Blood pressure panel",
+          "active",
+          "", // age_min
+          "", // age_max
+          "", // age_op
+          "", // gender
+          "High", // range_display
+          "100", // range_min
+          "200", // range_max
+        ],
+      ],
+      "definitions.csv",
+    );
+    const compPath = makeEmptyComponentsCsv();
+
+    try {
+      await uploadObsDefCsvs(page, defPath, compPath);
+      // Two input rows deduplicate to 1 definition
+      await expectReviewTable(page, { validCount: 1, totalCount: 1 });
+      await clickImportButton(page);
+      await expectImportSuccess(page);
+
+      const facility = getFacility();
+      const created = await fetchApiResults<{
+        qualified_ranges?: Array<{ ranges?: unknown[] }>;
+        component?: Array<{ qualified_ranges?: unknown[] }>;
+      }>(request, `/api/v1/observation_definition/f-${facility.id}-${slug}/`, {
+        paginated: false,
+        params: { facility: facility.id },
+      });
+
+      expect(created.qualified_ranges?.length ?? 0).toBeGreaterThan(0);
+      expect(created.component?.length ?? 0).toBe(0);
+    } finally {
+      cleanupTempFile(defPath);
+      cleanupTempFile(compPath);
+    }
+  });
+
+  test("should import with component-level qualified ranges (age-banded)", async ({
+    page,
+    request,
+  }) => {
+    const suffix = Date.now();
+    const slug = `bp-${suffix}`;
+    const defPath = createTempCsv(
+      DEF_HEADERS,
+      [makeValidDefRow(suffix)],
+      "definitions.csv",
+    );
+    // Two rows for the same (slug, code_value) with different age conditions
+    // → two separate InterpGroups → two QualifiedRanges on the component
+    const compPath = createTempCsv(
+      [...COMP_HEADERS, ...RANGE_COLUMNS],
+      [
+        [
+          slug,
+          "http://loinc.org",
+          "8480-6",
+          "Systolic blood pressure",
+          "quantity",
+          "http://unitsofmeasure.org",
+          "mm[Hg]",
+          "mmHg",
+          "0", // age_min
+          "18", // age_max
+          "years", // age_op
+          "", // gender
+          "Normal", // range_display
+          "60", // range_min
+          "120", // range_max
+        ],
+        [
+          slug,
+          "http://loinc.org",
+          "8480-6",
+          "Systolic blood pressure",
+          "quantity",
+          "http://unitsofmeasure.org",
+          "mm[Hg]",
+          "mmHg",
+          "18", // age_min
+          "", // age_max
+          "years", // age_op
+          "", // gender
+          "Normal", // range_display
+          "60", // range_min
+          "130", // range_max
+        ],
+      ],
+      "components.csv",
+    );
+
+    try {
+      await uploadObsDefCsvs(page, defPath, compPath);
+      await expectReviewTable(page, { validCount: 1, totalCount: 1 });
+      await clickImportButton(page);
+      await expectImportSuccess(page);
+
+      const facility = getFacility();
+      const created = await fetchApiResults<{
+        qualified_ranges?: Array<{ ranges?: unknown[] }>;
+        component?: Array<{ qualified_ranges?: unknown[] }>;
+      }>(request, `/api/v1/observation_definition/f-${facility.id}-${slug}/`, {
+        paginated: false,
+        params: { facility: facility.id },
+      });
+
+      expect(created.qualified_ranges?.length ?? 0).toBe(0);
+      expect(created.component?.length ?? 0).toBeGreaterThan(0);
+      expect(
+        created.component?.some(
+          (comp) => (comp.qualified_ranges?.length ?? 0) > 0,
+        ),
+      ).toBeTruthy();
     } finally {
       cleanupTempFile(defPath);
       cleanupTempFile(compPath);

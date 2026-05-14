@@ -150,7 +150,7 @@ export function ImportProgress({
             {/* Failure details */}
             {hasFailures && (
               <Alert variant="destructive">
-                <AlertDescription>
+                <AlertDescription className="w-full">
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="font-medium">
