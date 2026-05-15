@@ -13,7 +13,8 @@ import {
   validateDepartmentRows,
 } from "@/components/pages/Departments/utils";
 import type { ImportConfig } from "@/internalTypes/importConfig";
-import organizationApi from "@/types/organization/organizationApi";
+import { FacilityOrganizationCreate } from "@/types/facilityOrganization/facilityOrganization";
+import facilityOrganizationApi from "@/types/facilityOrganization/facilityOrganizationApi";
 
 interface DepartmentImportProps {
   facilityId?: string;
@@ -37,12 +38,12 @@ function createDepartmentImportConfig(
 
     // API operations
     createResource: async (row, params) => {
-      const payload = {
+      const payload: FacilityOrganizationCreate = {
         ...toDepartmentCreatePayload(row, facilityId),
         ...Object.assign({}, ...params),
       };
-      const created = await mutate(organizationApi.create, {
-        pathParams: { facility_id: facilityId },
+      const created = await mutate(facilityOrganizationApi.create, {
+        pathParams: { facilityId: facilityId },
       })(payload);
       if (!created?.id) {
         throw new Error(`Failed to create department: ${row.name}`);
