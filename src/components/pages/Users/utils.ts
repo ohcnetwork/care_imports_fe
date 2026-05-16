@@ -1,6 +1,6 @@
-import { z } from "zod";
-import { normalizeHeader } from "@/internalTypes/common";
+import { buildHeaderMapping } from "@/internalTypes/common";
 import { UserCreate } from "@/types/user/user";
+import { z } from "zod";
 
 // ─── Required & Optional Headers ───────────────────────────────────
 export const USER_REQUIRED_HEADERS = [
@@ -17,17 +17,11 @@ export const USER_REQUIRED_HEADERS = [
 
 export const USER_OPTIONAL_HEADERS = ["geoOrganization"] as const;
 
-// ─── Header Mapping (normalized → canonical) ───────────────────────
-export const USER_HEADER_MAP: Record<string, string> = [
+// ─── Header Mapping (normalized → canonical) ─────────────────────
+export const USER_HEADER_MAP: Record<string, string> = buildHeaderMapping([
   ...USER_REQUIRED_HEADERS,
   ...USER_OPTIONAL_HEADERS,
-].reduce(
-  (acc, header) => {
-    acc[normalizeHeader(header)] = header;
-    return acc;
-  },
-  {} as Record<string, string>,
-);
+]);
 
 // ─── Gender Enum ───────────────────────────────────────────────────
 export const GenderSchema = z.enum([

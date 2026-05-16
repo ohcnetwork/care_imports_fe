@@ -57,7 +57,7 @@ import type {
   HealthcareServiceOption,
   ResolvedRow,
 } from "@/Utils/activityDefinitionHelper";
-import { normalizeName } from "@/Utils/importHelpers";
+import { normalize } from "@/Utils/importHelpers";
 import { mutate } from "@/Utils/request/mutate";
 import { upsertResourceCategories } from "@/Utils/resourceCategory";
 
@@ -193,7 +193,7 @@ export default function ActivityDefinitionImport({
 
         // Look up location IDs from cache (populated by validateRows)
         for (const name of row.location_names) {
-          const locationId = cache.locationIdMap.get(normalizeName(name));
+          const locationId = cache.locationIdMap.get(normalize(name));
           if (locationId) {
             resolved.locationIds.push(locationId);
           }
@@ -202,7 +202,7 @@ export default function ActivityDefinitionImport({
         // Look up healthcare service ID from cache (populated by validateRows)
         if (row.healthcare_service_name) {
           const hsId = cache.healthcareServiceIdMap.get(
-            normalizeName(row.healthcare_service_name),
+            normalize(row.healthcare_service_name),
           );
           if (hsId) {
             resolved.healthcareServiceId = hsId;
@@ -214,7 +214,7 @@ export default function ActivityDefinitionImport({
         if (category?.slug) {
           resolved.categorySlug = category.slug;
         } else if (categoryName) {
-          const normalizedCat = normalizeName(categoryName);
+          const normalizedCat = normalize(categoryName);
           if (!cache.categorySlugMap.has(normalizedCat)) {
             const catMap = await upsertResourceCategories({
               facilityId,

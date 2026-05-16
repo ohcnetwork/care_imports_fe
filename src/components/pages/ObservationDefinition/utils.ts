@@ -1,5 +1,10 @@
-import { getCellValue, SlugSchema, normalizeHeader } from "@/internalTypes/common";
-import { parseCsvText } from "@/Utils/csv";
+import {
+  buildHeaderMapping,
+  getCellValue,
+  normalizeHeader,
+  SlugSchema,
+  validateNoDuplicateSlugs,
+} from "@/internalTypes/common";
 import type { ProcessedRow, ReviewColumn } from "@/internalTypes/importConfig";
 import type { Code } from "@/types/base/code/code";
 import type { Condition } from "@/types/base/condition/condition";
@@ -18,6 +23,8 @@ import {
   ObservationDefinitionStatus,
   QuestionType,
 } from "@/types/emr/observationDefinition/observationDefinition";
+import { parseCsvText } from "@/Utils/csv";
+import { formatCode } from "@/Utils/importHelpers";
 import { z } from "zod";
 
 // ─── Headers ───────────────────────────────────────────────────────
@@ -53,13 +60,7 @@ export const OBS_DEF_ALL_HEADERS = [
 
 // ─── Header Map (normalized → canonical) ───────────────────────────
 export const OBS_DEF_HEADER_MAP: Record<string, string> =
-  OBS_DEF_ALL_HEADERS.reduce(
-    (acc, header) => {
-      acc[normalizeHeader(header)] = header;
-      return acc;
-    },
-    {} as Record<string, string>,
-  );
+  buildHeaderMapping(OBS_DEF_ALL_HEADERS);
 
 // ─── Constants ─────────────────────────────────────────────────────
 
@@ -575,6 +576,11 @@ export function additionalRowValidation(
       errors.push(`${label}: system is required when code or display is set`);
   };
 
+  row.code_value = formatCode(row.code_value)!;
+  row.body_site_code = formatCode(row.body_site_code);
+  row.method_code = formatCode(row.method_code);
+  row.permitted_unit_code = formatCode(row.permitted_unit_code);
+
   checkCodeTriplet(
     row.body_site_system,
     row.body_site_code,
@@ -601,23 +607,7 @@ export function additionalRowValidation(
 export function validateObservationDefinitionRows(
   rows: ObservationDefinitionRow[],
 ): { identifier: string; reason: string }[] {
-  const errors: { identifier: string; reason: string }[] = [];
-  const slugSeen = new Map<string, number>();
-
-  rows.forEach((row, index) => {
-    const slug = row.slug_value;
-    const prevIndex = slugSeen.get(slug);
-    if (prevIndex !== undefined) {
-      errors.push({
-        identifier: slug,
-        reason: `Duplicate slug "${slug}" (first seen in row ${prevIndex + 2})`,
-      });
-    } else {
-      slugSeen.set(slug, index);
-    }
-  });
-
-  return errors;
+  return validateNoDuplicateSlugs(rows, (row) => row.slug_value);
 }
 
 // ─── CSV → ProcessedRows ───────────────────────────────────────────

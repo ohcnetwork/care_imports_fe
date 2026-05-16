@@ -3,7 +3,10 @@ import { z } from "zod";
 import type { ChargeItemDefinitionCreate } from "@/types/billing/chargeItemDefinition/chargeItemDefinition";
 import { ChargeItemDefinitionStatus } from "@/types/billing/chargeItemDefinition/chargeItemDefinition";
 
-import { normalizeHeader } from "@/internalTypes/common";
+import {
+  buildHeaderMapping,
+  validateNoDuplicateSlugs,
+} from "@/internalTypes/common";
 import { MonetaryComponentType } from "@/types/base/monetaryComponent/monetaryComponent";
 
 // ─── Required Headers ──────────────────────────────────────────────
@@ -25,16 +28,11 @@ export const CHARGE_ITEM_OPTIONAL_HEADERS = [
 // ─── Status Enum ───────────────────────────────────────────────────
 
 // ─── Header Mapping ────────────────────────────────────────────────
-export const CHARGE_ITEM_HEADER_MAP: Record<string, string> = [
-  ...CHARGE_ITEM_REQUIRED_HEADERS,
-  ...CHARGE_ITEM_OPTIONAL_HEADERS,
-].reduce(
-  (acc, header) => {
-    acc[normalizeHeader(header)] = header;
-    return acc;
-  },
-  {} as Record<string, string>,
-);
+export const CHARGE_ITEM_HEADER_MAP: Record<string, string> =
+  buildHeaderMapping([
+    ...CHARGE_ITEM_REQUIRED_HEADERS,
+    ...CHARGE_ITEM_OPTIONAL_HEADERS,
+  ]);
 
 // ─── Zod Schema ────────────────────────────────────────────────────
 const slugValueRegex = /^[a-z0-9_-]+$/;
@@ -63,24 +61,9 @@ export type ChargeItemRow = z.infer<typeof ChargeItemRowSchema>;
 export function validateChargeItemRows(
   rows: ChargeItemRow[],
 ): { identifier: string; reason: string }[] {
-  const errors: { identifier: string; reason: string }[] = [];
-  const slugSeen = new Map<string, number>();
-
-  for (let i = 0; i < rows.length; i++) {
-    const slug = rows[i].slug_value.trim().toLowerCase();
-    const prevIdx = slugSeen.get(slug);
-
-    if (prevIdx !== undefined) {
-      errors.push({
-        identifier: slug,
-        reason: `Duplicate slug_value (first seen in row ${prevIdx + 2})`,
-      });
-    } else {
-      slugSeen.set(slug, i);
-    }
-  }
-
-  return errors;
+  return validateNoDuplicateSlugs(rows, (row) =>
+    row.slug_value.trim().toLowerCase(),
+  );
 }
 
 // ─── API Payload ───────────────────────────────────────────────────

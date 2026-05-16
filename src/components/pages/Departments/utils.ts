@@ -1,23 +1,14 @@
-import { normalizeHeader } from "@/internalTypes/common";
+import { buildHeaderMapping } from "@/internalTypes/common";
+import { normalize } from "@/Utils/importHelpers";
 import { z } from "zod";
-
-// ─── Shared Helpers ────────────────────────────────────────────────
-const normalize = (s: string) => s.trim().toLowerCase();
 
 // ─── Required Headers ──────────────────────────────────────────────
 export const DEPARTMENT_REQUIRED_HEADERS = ["name"] as const;
 export const DEPARTMENT_OPTIONAL_HEADERS = ["parent"] as const;
 
 // ─── Header Mapping ────────────────────────────────────────────────
-export const DEPARTMENT_HEADER_MAP: Record<string, string> = [
-  ...DEPARTMENT_REQUIRED_HEADERS,
-  ...DEPARTMENT_OPTIONAL_HEADERS,
-].reduce(
-  (acc, header) => {
-    acc[normalizeHeader(header)] = header;
-    return acc;
-  },
-  {} as Record<string, string>,
+export const DEPARTMENT_HEADER_MAP: Record<string, string> = buildHeaderMapping(
+  [...DEPARTMENT_REQUIRED_HEADERS, ...DEPARTMENT_OPTIONAL_HEADERS],
 );
 
 // ─── Zod Schema ────────────────────────────────────────────────────

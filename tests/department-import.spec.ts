@@ -1,13 +1,13 @@
-import { test, expect } from "@playwright/test";
-import { goToImport } from "./helpers/navigation";
-import { createTempCsv, uploadCsvFile, cleanupTempFile } from "./helpers/csv";
+import { expect, test } from "@playwright/test";
+import { cleanupTempFile, createTempCsv, uploadCsvFile } from "./helpers/csv";
 import {
-  downloadSampleCsv,
-  expectReviewTable,
   clickImportButton,
+  downloadSampleCsv,
   expectImportSuccess,
+  expectReviewTable,
   expectValidationError,
 } from "./helpers/import-flow";
+import { goToImport } from "./helpers/navigation";
 
 test.use({ storageState: "tests/.auth/user.json" });
 
@@ -108,7 +108,7 @@ test.describe("Department Import", () => {
   test("should show error for missing department name", async ({ page }) => {
     const csvPath = createTempCsv(
       ["Name", "Parent"],
-      [["", ""]], // empty name
+      [["", "Foobar"]], // empty name
     );
 
     try {
