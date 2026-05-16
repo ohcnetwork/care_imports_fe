@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { HttpError, request } from "@/apis/request";
+import { request } from "@/apis/request";
 import { ImportFlow } from "@/components/imports";
 import {
   CHARGE_ITEM_HEADER_MAP,
@@ -30,6 +30,7 @@ import {
 import resourceCategoryApi from "@/types/base/resourceCategory/resourceCategoryApi";
 import chargeItemDefinitionApi from "@/types/billing/chargeItemDefinition/chargeItemDefinitionApi";
 import { downloadCsv } from "@/Utils/csv";
+import { batchFetchAll } from "@/Utils/importHelpers";
 import { mutate } from "@/Utils/request/mutate";
 import { createSlug } from "@/Utils/slug";
 import { Download, Upload } from "lucide-react";
@@ -44,7 +45,10 @@ interface ChargeItemDefinitionImportProps {
 function createChargeItemImportConfig(
   facilityId: string,
   categorySlug: string,
-): ImportConfig<ChargeItemRow, { slug: string }> {
+): ImportConfig<ChargeItemRow, { slug: string }, Set<string>> {
+  // Cache of existing slugs, populated by beforeImport
+  let existingSlugsCache: Set<string> | null = null;
+
   return {
     resourceName: "Charge Item Definition",
     resourceNamePlural: "Charge Item Definitions",
@@ -55,19 +59,21 @@ function createChargeItemImportConfig(
     schema: ChargeItemRowSchema,
     parseRow: parseChargeItemRow,
 
+    // Batch pre-fetch existing slugs once before processing rows
+    beforeImport: async () => {
+      const results = await batchFetchAll<{ slug: string }>(
+        chargeItemDefinitionApi.listChargeItemDefinition,
+        { pathParams: { facilityId } },
+      );
+      existingSlugsCache = new Set(results.map((item) => item.slug));
+      return existingSlugsCache;
+    },
+
     // API operations
     checkExists: async (row) => {
       const slug = `f-${facilityId}-${row.slug_value.trim()}`;
-      try {
-        await request(chargeItemDefinitionApi.retrieveChargeItemDefinition, {
-          pathParams: { facilityId, slug },
-        });
-        return slug;
-      } catch (error) {
-        if (error instanceof HttpError && error.status === 404) {
-          return undefined;
-        }
-        throw error;
+      if (existingSlugsCache) {
+        return existingSlugsCache.has(slug) ? slug : undefined;
       }
     },
 

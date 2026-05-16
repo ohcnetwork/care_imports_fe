@@ -1,7 +1,6 @@
 import { AlertCircle, Database, Upload } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
-import { HttpError, request } from "@/apis/request";
 import { ImportFlow } from "@/components/imports";
 import {
   OBS_DEF_REVIEW_COLUMNS,
@@ -23,6 +22,7 @@ import { disableOverride } from "@/config";
 import { useMasterDataAvailability } from "@/hooks/useMasterDataAvailability";
 import type { ImportConfig, ProcessedRow } from "@/internalTypes/importConfig";
 import observationDefinitionApi from "@/types/emr/observationDefinition/observationDefinitionApi";
+import { batchFetchAll } from "@/Utils/importHelpers";
 import {
   generateSampleComponentsCsv,
   generateSampleDefinitionsCsv,
@@ -106,30 +106,35 @@ export default function ObservationDefinitionImportNew({
   const disableManualUpload = disableOverride && repoFileAvailable;
 
   // ─── Import Config (shared by both CSV and master paths) ──────────
-  const importConfig: ImportConfig<ObservationDefinitionRow> = useMemo(
-    () => ({
+  // Closure-scoped cache for existing slugs, populated by beforeImport
+  const importConfig: ImportConfig<
+    ObservationDefinitionRow,
+    void,
+    Set<string>
+  > = useMemo(() => {
+    let existingSlugsCache: Set<string> | null = null;
+
+    return {
       resourceName: "Observation Definition",
       resourceNamePlural: "Observation Definitions",
       reviewColumns: OBS_DEF_REVIEW_COLUMNS,
       getRowIdentifier: (row) => row.slug_value,
 
+      beforeImport: async () => {
+        if (!facilityId) return new Set<string>();
+        const results = await batchFetchAll<{ slug: string }>(
+          observationDefinitionApi.listObservationDefinition,
+          { queryParams: { facility: facilityId } },
+        );
+        existingSlugsCache = new Set(results.map((item) => item.slug));
+        return existingSlugsCache;
+      },
+
       checkExists: async (row) => {
         if (!facilityId) return undefined;
         const slug = `f-${facilityId}-${row.slug_value}`;
-        try {
-          await request(
-            observationDefinitionApi.retrieveObservationDefinition,
-            {
-              pathParams: { observationSlug: slug },
-              queryParams: { facility: facilityId },
-            },
-          );
-          return slug;
-        } catch (error) {
-          if (error instanceof HttpError && error.status === 404) {
-            return undefined;
-          }
-          throw error;
+        if (existingSlugsCache) {
+          return existingSlugsCache.has(slug) ? slug : undefined;
         }
       },
 
@@ -146,9 +151,8 @@ export default function ObservationDefinitionImportNew({
           pathParams: { observationSlug: existingSlug },
         })(toObservationDefinitionDatapoint(row, facilityId, existingSlug));
       },
-    }),
-    [facilityId],
-  );
+    };
+  }, [facilityId]);
 
   // ─── Handlers ────────────────────────────────────────────────────
   const handleBack = useCallback(() => {

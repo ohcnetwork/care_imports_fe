@@ -1,7 +1,6 @@
 import { AlertCircle, Database, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { HttpError, request } from "@/apis/request";
 import { ImportFlow } from "@/components/imports";
 import {
   AD_HEADER_MAP,
@@ -57,7 +56,7 @@ import type {
   HealthcareServiceOption,
   ResolvedRow,
 } from "@/Utils/activityDefinitionHelper";
-import { normalize } from "@/Utils/importHelpers";
+import { batchFetchAll, normalize } from "@/Utils/importHelpers";
 import { mutate } from "@/Utils/request/mutate";
 import { upsertResourceCategories } from "@/Utils/resourceCategory";
 
@@ -116,28 +115,27 @@ export default function ActivityDefinitionImport({
 
   // ─── Base Config (shared by CSV and master paths) ─────────────────
   const createBaseConfig = useCallback(() => {
-    const base = {
+    let existingSlugsCache: Set<string> | null = null;
+
+    return {
       resourceName: "Activity Definition",
       resourceNamePlural: "Activity Definitions",
       getRowIdentifier: (row: { slug_value?: string }) => row.slug_value ?? "",
 
       checkExists: async (row: { slug_value?: string }) => {
         if (!facilityId) return undefined;
-        const slug = `f-${facilityId}-${row.slug_value}`;
-        try {
-          await request(activityDefinitionApi.retrieveActivityDefinition, {
-            pathParams: { facilityId, activityDefinitionSlug: slug },
-          });
-          return slug;
-        } catch (error) {
-          if (error instanceof HttpError && error.status === 404) {
-            return undefined;
-          }
-          throw error;
+        // Lazy-init: batch-fetch all slugs on first call
+        if (!existingSlugsCache) {
+          const results = await batchFetchAll<{ slug: string }>(
+            activityDefinitionApi.listActivityDefinition,
+            { pathParams: { facilityId } },
+          );
+          existingSlugsCache = new Set(results.map((item) => item.slug));
         }
+        const slug = `f-${facilityId}-${row.slug_value}`;
+        return existingSlugsCache.has(slug) ? slug : undefined;
       },
     };
-    return base;
   }, [facilityId]);
 
   // ─── CSV Import Config ─────────────────────────────────────────────
