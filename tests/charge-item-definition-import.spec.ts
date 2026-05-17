@@ -41,6 +41,7 @@ test.describe("Charge Item Definition Import", () => {
           facilityId: facility.id,
           params: {
             resource_type: "charge_item_definition",
+            resource_sub_type: "other",
           },
         },
       );

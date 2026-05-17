@@ -1,5 +1,9 @@
 import { request } from "@/apis/request";
-import { getCellValue } from "@/internalTypes/common";
+import {
+  CodeSchema,
+  getCellValue,
+  normalizeHeader,
+} from "@/internalTypes/common";
 import type { ProcessedRow } from "@/internalTypes/importConfig";
 import { ResourceCategoryResourceType } from "@/types/base/resourceCategory/resourceCategory";
 import {
@@ -15,7 +19,7 @@ import {
   stripMappingErrors,
 } from "@/Utils/activityDefinitionHelper";
 import { parseCsvText } from "@/Utils/csv";
-import { normalizeName } from "@/Utils/importHelpers";
+import { batchFetchAll, formatCode, normalize } from "@/Utils/importHelpers";
 import { upsertResourceCategories } from "@/Utils/resourceCategory";
 import { isUrlSafeSlug } from "@/Utils/slug";
 import { z } from "zod";
@@ -23,12 +27,16 @@ import { z } from "zod";
 import type { ReviewColumn } from "@/internalTypes/importConfig";
 import type { Code } from "@/types/base/code/code";
 
-import { normalizeHeader } from "@/internalTypes/common";
+import {
+  buildHeaderMapping,
+  validateNoDuplicateSlugs,
+} from "@/internalTypes/common";
 import chargeItemDefinitionApi from "@/types/billing/chargeItemDefinition/chargeItemDefinitionApi";
 import observationDefinitionApi from "@/types/emr/observationDefinition/observationDefinitionApi";
 import specimenDefinitionApi from "@/types/emr/specimenDefinition/specimenDefinitionApi";
 import healthcareServiceApi from "@/types/healthcareService/healthcareServiceApi";
 import locationApi from "@/types/location/locationApi";
+import { splitCsvList } from "@/Utils/csv";
 
 // ─── Row Type ─────────────────────────────────────────────────────
 
@@ -85,24 +93,10 @@ const AD_OPTIONAL_HEADERS = [
   "healthcare_service_name",
 ] as const;
 
-export const AD_HEADER_MAP: Record<string, string> = [
+export const AD_HEADER_MAP: Record<string, string> = buildHeaderMapping([
   ...AD_REQUIRED_HEADERS,
   ...AD_OPTIONAL_HEADERS,
-].reduce(
-  (acc, header) => {
-    acc[normalizeHeader(header)] = header;
-    return acc;
-  },
-  {} as Record<string, string>,
-);
-
-// ─── Zod Schema ───────────────────────────────────────────────────
-
-const CodeSchema = z.object({
-  system: z.string().min(1, "Code system is required"),
-  code: z.string().min(1, "Code value is required"),
-  display: z.string().min(1, "Code display is required"),
-});
+]);
 
 export const getActivityDefinitionCsvRowSchema = () =>
   z
@@ -162,14 +156,6 @@ export const ACTIVITY_CLASSIFICATIONS = [
 export const ACTIVITY_KIND = "service_request";
 
 // ─── Helpers ──────────────────────────────────────────────────────
-
-export function splitCellValues(value?: string): string[] {
-  return (value ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 const isNonEmptyString = (value: unknown) =>
   typeof value === "string" && value.trim().length > 0;
 
@@ -205,7 +191,12 @@ function buildOptionalCode(
 ): Code | null {
   if (!code && !display) return null;
   if (!code || !display) return null;
-  return { system: system || "http://snomed.info/sct", code, display };
+  const formattedCode = formatCode(code) ?? code;
+  return {
+    system: system || "http://snomed.info/sct",
+    code: formattedCode,
+    display,
+  };
 }
 
 // ─── CSV Row Parser ───────────────────────────────────────────────
@@ -227,9 +218,9 @@ export function parseActivityDefinitionCsvRow(
   const codeSystem = get("code_system") || "http://snomed.info/sct";
 
   // Build diagnostic report codes from comma-separated triplets
-  const diagnosticSystems = splitCellValues(get("diagnostic_report_system"));
-  const diagnosticCodes = splitCellValues(get("diagnostic_report_code"));
-  const diagnosticDisplays = splitCellValues(get("diagnostic_report_display"));
+  const diagnosticSystems = splitCsvList(get("diagnostic_report_system"));
+  const diagnosticCodes = splitCsvList(get("diagnostic_report_code"));
+  const diagnosticDisplays = splitCsvList(get("diagnostic_report_display"));
 
   const diagnosticReportCodes: Code[] = [];
   if (
@@ -253,12 +244,12 @@ export function parseActivityDefinitionCsvRow(
     slug_value: slugValue,
     description: get("description"),
     usage: get("usage"),
-    status: get("status") || "active",
-    classification: get("classification") || "laboratory",
+    status: (get("status") || "active").toLowerCase(),
+    classification: (get("classification") || "laboratory").toLowerCase(),
     kind: get("kind") || "service_request",
     code: {
       system: codeSystem,
-      code: get("code_value"),
+      code: formatCode(get("code_value")),
       display: get("code_display"),
     },
     body_site: buildOptionalCode(
@@ -268,11 +259,11 @@ export function parseActivityDefinitionCsvRow(
     ),
     diagnostic_report_codes: diagnosticReportCodes,
     derived_from_uri: get("derived_from_uri"),
-    specimen_slugs: splitCellValues(get("specimen_slugs")),
-    observation_slugs: splitCellValues(get("observation_slugs")),
-    charge_item_slugs: splitCellValues(get("charge_item_slugs")),
+    specimen_slugs: splitCsvList(get("specimen_slugs")),
+    observation_slugs: splitCsvList(get("observation_slugs")),
+    charge_item_slugs: splitCsvList(get("charge_item_slugs")),
     charge_item_price: get("charge_item_price"),
-    location_names: splitCellValues(get("location_names")),
+    location_names: splitCsvList(get("location_names")),
     healthcare_service_name: get("healthcare_service_name"),
     ...(categorySlug
       ? { categorySlug }
@@ -288,21 +279,7 @@ export function parseActivityDefinitionCsvRow(
 function validateActivityDefinitionCsvRowsSync(
   rows: ActivityDefinitionCsvRow[],
 ): { identifier: string; reason: string }[] {
-  const errors: { identifier: string; reason: string }[] = [];
-  const slugSeen = new Map<string, number>();
-
-  rows.forEach((row, index) => {
-    const slug = row.slug_value;
-    const prevIndex = slugSeen.get(slug);
-    if (prevIndex !== undefined) {
-      errors.push({
-        identifier: slug,
-        reason: `Duplicate slug_value "${slug}" (first seen in row ${prevIndex + 2})`,
-      });
-    } else {
-      slugSeen.set(slug, index);
-    }
-  });
+  const errors = validateNoDuplicateSlugs(rows, (row) => row.slug_value);
 
   return errors;
 }
@@ -364,49 +341,63 @@ export async function validateActivityDefinitionCsvRowsAsync(
   const hsResults = new Map<string, boolean>();
 
   await Promise.all([
-    // Check specimen slugs
-    ...Array.from(allSpecimenSlugs).map(async (slug) => {
+    // Check specimen slugs (batch fetch)
+    (async () => {
+      if (allSpecimenSlugs.size === 0) return;
       try {
-        await request(specimenDefinitionApi.retrieveSpecimenDefinition, {
-          pathParams: { facilityId, specimenSlug: `f-${facilityId}-${slug}` },
-        });
-        specimenResults.set(slug, true);
+        const results = await batchFetchAll<{ slug: string }>(
+          specimenDefinitionApi.listSpecimenDefinitions,
+          { pathParams: { facilityId } },
+        );
+        const existingSlugs = new Set(results.map((item) => item.slug));
+        for (const slug of allSpecimenSlugs) {
+          specimenResults.set(
+            slug,
+            existingSlugs.has(`f-${facilityId}-${slug}`),
+          );
+        }
       } catch {
-        specimenResults.set(slug, false);
+        for (const slug of allSpecimenSlugs) {
+          specimenResults.set(slug, false);
+        }
       }
-    }),
+    })(),
 
-    // Check observation slugs
-    ...Array.from(allObservationSlugs).map(async (slug) => {
+    // Check observation slugs (batch fetch)
+    (async () => {
+      if (allObservationSlugs.size === 0) return;
       try {
-        await request(observationDefinitionApi.retrieveObservationDefinition, {
-          pathParams: { observationSlug: `f-${facilityId}-${slug}` },
-        });
-        observationResults.set(slug, true);
+        const results = await batchFetchAll<{ slug: string }>(
+          observationDefinitionApi.listObservationDefinition,
+          { queryParams: { facility: facilityId } },
+        );
+        const existingSlugs = new Set(results.map((item) => item.slug));
+        for (const slug of allObservationSlugs) {
+          observationResults.set(
+            slug,
+            existingSlugs.has(`f-${facilityId}-${slug}`),
+          );
+        }
       } catch {
-        observationResults.set(slug, false);
+        for (const slug of allObservationSlugs) {
+          observationResults.set(slug, false);
+        }
       }
-    }),
+    })(),
 
     // Check charge item slugs (batch fetch)
     (async () => {
       if (allChargeItemSlugs.size === 0) return;
       try {
-        const response = await request(
+        const results = await batchFetchAll<{ slug: string }>(
           chargeItemDefinitionApi.listChargeItemDefinition,
-          {
-            pathParams: { facilityId },
-            queryParams: { limit: 500 },
-          },
+          { pathParams: { facilityId } },
         );
-        const existingSlugs = new Set(
-          response.results.map((item) => item.slug),
-        );
+        const existingSlugs = new Set(results.map((item) => item.slug));
         for (const slug of allChargeItemSlugs) {
           chargeItemResults.set(
             slug,
-            existingSlugs.has(slug) ||
-              existingSlugs.has(`f-${facilityId}-${slug}`),
+            existingSlugs.has(`f-${facilityId}-${slug}`),
           );
         }
       } catch {
@@ -425,13 +416,13 @@ export async function validateActivityDefinitionCsvRowsAsync(
           queryParams: { limit: 500 },
         });
         const locationsByName = new Map(
-          response.results.map((loc) => [normalizeName(loc.name), loc]),
+          response.results.map((loc) => [normalize(loc.name), loc]),
         );
         for (const name of allLocationNames) {
-          const loc = locationsByName.get(normalizeName(name));
+          const loc = locationsByName.get(normalize(name));
           locationResults.set(name, !!loc);
           if (loc && cache) {
-            cache.locationIdMap.set(normalizeName(name), loc.id);
+            cache.locationIdMap.set(normalize(name), loc.id);
           }
         }
       } catch {
@@ -453,13 +444,13 @@ export async function validateActivityDefinitionCsvRowsAsync(
           },
         );
         const servicesByName = new Map(
-          response.results.map((svc) => [normalizeName(svc.name), svc]),
+          response.results.map((svc) => [normalize(svc.name), svc]),
         );
         for (const name of allHealthcareServiceNames) {
-          const svc = servicesByName.get(normalizeName(name));
+          const svc = servicesByName.get(normalize(name));
           hsResults.set(name, !!svc);
           if (svc && cache) {
-            cache.healthcareServiceIdMap.set(normalizeName(name), svc.id);
+            cache.healthcareServiceIdMap.set(normalize(name), svc.id);
           }
         }
       } catch {
@@ -688,13 +679,13 @@ export const parseActivityDefinitionCsv = (
       "Body site",
     );
 
-    const diagnosticSystems = splitCellValues(
+    const diagnosticSystems = splitCsvList(
       getCellValue(row, headerMap, "diagnostic_report_system").trim(),
     );
-    const diagnosticCodes = splitCellValues(
+    const diagnosticCodes = splitCsvList(
       getCellValue(row, headerMap, "diagnostic_report_code").trim(),
     );
-    const diagnosticDisplays = splitCellValues(
+    const diagnosticDisplays = splitCsvList(
       getCellValue(row, headerMap, "diagnostic_report_display").trim(),
     );
     const hasDiagnosticValues =
@@ -741,17 +732,17 @@ export const parseActivityDefinitionCsv = (
       diagnostic_report_codes: diagnosticReportCodes,
       derived_from_uri: getCellValue(row, headerMap, "derived_from_uri").trim(),
       category_name: categoryName,
-      specimen_slugs: splitCellValues(
+      specimen_slugs: splitCsvList(
         getCellValue(row, headerMap, "specimen_slugs").trim(),
       ),
-      observation_slugs: splitCellValues(
+      observation_slugs: splitCsvList(
         getCellValue(row, headerMap, "observation_slugs").trim(),
       ),
-      charge_item_slugs: splitCellValues(
+      charge_item_slugs: splitCsvList(
         getCellValue(row, headerMap, "charge_item_slugs").trim(),
       ),
       charge_item_price: chargeItemPrice,
-      location_names: splitCellValues(
+      location_names: splitCsvList(
         getCellValue(row, headerMap, "location_names").trim(),
       ),
       healthcare_service_name: getCellValue(
@@ -894,10 +885,10 @@ export async function resolveReferences(
               },
             );
             const match = response.results.find(
-              (item) => normalizeName(item.title) === normalizeName(title),
+              (item) => normalize(item.title) === normalize(title),
             );
             if (match) {
-              chargeItemMap[normalizeName(title)] = match.slug;
+              chargeItemMap[normalize(title)] = match.slug;
             }
           } catch {
             // will surface as error on rows below
@@ -914,10 +905,10 @@ export async function resolveReferences(
               queryParams: { name, limit: 50 },
             });
             const match = response.results.find(
-              (item) => normalizeName(item.name) === normalizeName(name),
+              (item) => normalize(item.name) === normalize(name),
             );
             if (match) {
-              locationMap[normalizeName(name)] = match.id;
+              locationMap[normalize(name)] = match.id;
             }
           } catch {
             // will surface as error on rows below
@@ -953,7 +944,7 @@ export async function resolveReferences(
       chargeItemSlugs: [],
       locationIds: [],
       categorySlug: row.data?.category_name
-        ? categorySlugMap.get(normalizeName(row.data?.category_name))
+        ? categorySlugMap.get(normalize(row.data?.category_name))
         : "",
       healthcareServiceId: null,
     };
@@ -975,7 +966,7 @@ export async function resolveReferences(
     });
 
     row.data.location_names.forEach((name: string) => {
-      const id = locationMap[normalizeName(name)];
+      const id = locationMap[normalize(name)];
       if (id) {
         resolved.locationIds.push(id);
       } else {
@@ -985,7 +976,7 @@ export async function resolveReferences(
 
     const title = row.data.title.trim();
     if (title) {
-      const slug = chargeItemMap[normalizeName(title)];
+      const slug = chargeItemMap[normalize(title)];
       if (slug) {
         resolved.chargeItemSlugs.push(slug);
       } else {

@@ -141,7 +141,7 @@ export function ReviewTable<TRow>({
         )}
 
         <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <div className="max-h-96 overflow-auto">
+          <div className="max-h-[60vh] overflow-auto">
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50 text-gray-600 sticky top-0">
                 <tr>

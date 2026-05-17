@@ -13,15 +13,17 @@ import {
 
 import { request } from "@/apis/request";
 import {
+  buildHeaderMapping,
   CodeSchema,
   getCellValue,
   normalizeHeader,
+  validateNoDuplicateSlugs,
   zodDecimal,
 } from "@/internalTypes/common";
 import { Code } from "@/types/base/code/code";
+import valueSetApi from "@/types/valueSet/valueSetApi";
 import { parseCsvText } from "@/Utils/csv";
 import { isUrlSafeSlug } from "@/Utils/slug";
-import valueSetApi from "@/types/valueSet/valueSetApi";
 
 export interface SpecimenDefinitionImportProps {
   facilityId?: string;
@@ -740,16 +742,10 @@ export const SD_OPTIONAL_HEADERS = [
   "container_preparation",
 ] as const;
 
-export const SD_HEADER_MAP: Record<string, string> = [
+export const SD_HEADER_MAP: Record<string, string> = buildHeaderMapping([
   ...SD_REQUIRED_HEADERS,
   ...SD_OPTIONAL_HEADERS,
-].reduce(
-  (acc, header) => {
-    acc[normalizeHeader(header)] = header;
-    return acc;
-  },
-  {} as Record<string, string>,
-);
+]);
 
 // ─── CSV Row Parser ───────────────────────────────────────────────
 
@@ -901,24 +897,9 @@ export function parseSpecimenDefinitionRow(
 function validateSpecimenDefinitionRowsSync(
   rows: SpecimenDefinitionCsvRow[],
 ): { identifier: string; reason: string }[] {
-  const errors: { identifier: string; reason: string }[] = [];
-  const slugSeen = new Map<string, number>();
-
-  for (let i = 0; i < rows.length; i++) {
-    const slug = rows[i].slug_value.trim().toLowerCase();
-    const prevIdx = slugSeen.get(slug);
-
-    if (prevIdx !== undefined) {
-      errors.push({
-        identifier: slug,
-        reason: `Duplicate slug_value (first seen in row ${prevIdx + 2})`,
-      });
-    } else {
-      slugSeen.set(slug, i);
-    }
-  }
-
-  return errors;
+  return validateNoDuplicateSlugs(rows, (row) =>
+    row.slug_value.trim().toLowerCase(),
+  );
 }
 
 /**

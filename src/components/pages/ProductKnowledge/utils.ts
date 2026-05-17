@@ -1,4 +1,8 @@
-import { normalizeHeader, SlugSchema } from "@/internalTypes/common";
+import {
+  buildHeaderMapping,
+  SlugSchema,
+  validateNoDuplicateSlugs,
+} from "@/internalTypes/common";
 import { ReviewColumn } from "@/internalTypes/importConfig";
 import {
   ProductKnowledgeCreate,
@@ -6,6 +10,7 @@ import {
   ProductKnowledgeType,
   ProductNameTypes,
 } from "@/types/inventory/productKnowledge/productKnowledge";
+import { splitCsvList } from "@/Utils/csv";
 import { z } from "zod";
 
 // ─── Code Systems ──────────────────────────────────────────────────
@@ -54,13 +59,8 @@ export const PK_ALL_HEADERS = [
 ] as const;
 
 // ─── Header Mapping (normalized → canonical) ───────────────────────
-export const PK_HEADER_MAP: Record<string, string> = PK_ALL_HEADERS.reduce(
-  (acc, header) => {
-    acc[normalizeHeader(header)] = header;
-    return acc;
-  },
-  {} as Record<string, string>,
-);
+export const PK_HEADER_MAP: Record<string, string> =
+  buildHeaderMapping(PK_ALL_HEADERS);
 
 // ─── Zod Schema ────────────────────────────────────────────────────
 export const ProductKnowledgeRowSchema = (facilityId?: string) =>
@@ -116,14 +116,6 @@ export type ProductKnowledgeRow = z.infer<
 >;
 
 // ─── Helpers ───────────────────────────────────────────────────────
-function parseCsvList(value: string): string[] {
-  return value
-    ? value
-        .split(",")
-        .map((entry) => entry.trim())
-        .filter(Boolean)
-    : [];
-}
 
 function resolveBaseUnit(display: string) {
   const unit = DOSAGE_UNITS_CODES.find(
@@ -170,8 +162,8 @@ export function toProductKnowledgeCreatePayload(
   // Dosage form & routes (definitional)
   const dosageFormCode = row.dosageFormCode?.trim();
   const dosageFormDisplay = row.dosageFormDisplay?.trim();
-  const routeCodes = parseCsvList(row.routeCode || "");
-  const routeDisplays = parseCsvList(row.routeDisplay || "");
+  const routeCodes = splitCsvList(row.routeCode || "");
+  const routeDisplays = splitCsvList(row.routeDisplay || "");
 
   if (dosageFormCode) {
     const intendedRoutes = routeCodes.map((code, index) => ({
@@ -231,23 +223,7 @@ export function validateBaseUnit(display: string): string | null {
 export function validateProductKnowledgeRows(
   rows: ProductKnowledgeRow[],
 ): { identifier: string; reason: string }[] {
-  const errors: { identifier: string; reason: string }[] = [];
-  const slugSeen = new Map<string, number>();
-
-  rows.forEach((row, index) => {
-    const slug = row.slug;
-    const prevIndex = slugSeen.get(slug);
-    if (prevIndex !== undefined) {
-      errors.push({
-        identifier: slug,
-        reason: `Duplicate slug "${slug}" (first seen in row ${prevIndex + 2})`,
-      });
-    } else {
-      slugSeen.set(slug, index);
-    }
-  });
-
-  return errors;
+  return validateNoDuplicateSlugs(rows, (row) => row.slug);
 }
 
 // ─── Row Parser ────────────────────────────────────────────────────

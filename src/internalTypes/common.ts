@@ -104,3 +104,48 @@ export function buildHeaderMap(
   });
   return map;
 }
+
+/**
+ * Build the static header name mapping from a list of canonical header names.
+ * Maps normalizedHeader → canonicalHeader.
+ */
+export function buildHeaderMapping(
+  headers: readonly string[],
+): Record<string, string> {
+  return headers.reduce(
+    (acc, header) => {
+      acc[normalizeHeader(header)] = header;
+      return acc;
+    },
+    {} as Record<string, string>,
+  );
+}
+
+// ─── Cross-Row Slug Validation ─────────────────────────────────────
+/**
+ * Generic duplicate-slug validation for import rows.
+ * Returns errors for rows with duplicate slug values.
+ */
+export function validateNoDuplicateSlugs<T>(
+  rows: T[],
+  getSlug: (row: T) => string,
+): { identifier: string; reason: string }[] {
+  const errors: { identifier: string; reason: string }[] = [];
+  const slugSeen = new Map<string, number>();
+
+  for (let i = 0; i < rows.length; i++) {
+    const slug = getSlug(rows[i]);
+    const prevIdx = slugSeen.get(slug);
+
+    if (prevIdx !== undefined) {
+      errors.push({
+        identifier: slug,
+        reason: `Duplicate slug "${slug}" (first seen in row ${prevIdx + 2})`,
+      });
+    } else {
+      slugSeen.set(slug, i);
+    }
+  }
+
+  return errors;
+}

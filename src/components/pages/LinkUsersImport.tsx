@@ -17,7 +17,8 @@ import { normalizeHeader } from "@/internalTypes/common";
 import roleApi from "@/types/emr/role/roleApi";
 import facilityOrganizationApi from "@/types/facilityOrganization/facilityOrganizationApi";
 import userApi from "@/types/user/userApi";
-import { parseCsvText } from "@/Utils/csv";
+import { parseCsvText, splitCsvList } from "@/Utils/csv";
+import { normalize } from "@/Utils/importHelpers";
 import { mutate } from "@/Utils/request/mutate";
 
 interface LinkUsersImportProps {
@@ -78,14 +79,6 @@ const buildHeaderMap = (headers: string[]) => {
 
   return headerMap;
 };
-
-const normalizeName = (value: string) => value.trim().toLowerCase();
-
-const splitCellValues = (value?: string) =>
-  (value ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
 
 export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
   const [currentStep, setCurrentStep] = useState<
@@ -167,9 +160,9 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
           const response = await request(roleApi.listRoles, {
             queryParams: { limit: 10, offset: 0, name: roleName },
           });
-          const key = normalizeName(roleName);
+          const key = normalize(roleName);
           const match = response.results.find(
-            (role) => normalizeName(role.name) === key,
+            (role) => normalize(role.name) === key,
           );
 
           if (match) {
@@ -187,14 +180,14 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
 
       const organizationLookup = new Map<string, string>();
       organizationsResponse.results.forEach((organization) => {
-        const key = normalizeName(organization.name);
+        const key = normalize(organization.name);
         if (!organizationLookup.has(key)) {
           organizationLookup.set(key, organization.id);
         }
       });
 
       uniqueDepartmentNames.forEach((departmentName) => {
-        const key = normalizeName(departmentName);
+        const key = normalize(departmentName);
         const match = organizationLookup.get(key);
         if (match) {
           nextDepartmentMap[key] = match;
@@ -221,9 +214,9 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
         );
         const errorSet = new Set(baseErrors);
         const pairs = row.pairs.map((pair) => {
-          const roleId = nextRoleMap[normalizeName(pair.roleName)];
+          const roleId = nextRoleMap[normalize(pair.roleName)];
           const departmentId =
-            nextDepartmentMap[normalizeName(pair.departmentName)];
+            nextDepartmentMap[normalize(pair.departmentName)];
 
           if (!roleId) {
             errorSet.add(`Unknown role: ${pair.roleName}`);
@@ -307,8 +300,8 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
               ? row[headerMap.department]?.trim()
               : "";
 
-          const roleNames = splitCellValues(roleCell);
-          const departmentNames = splitCellValues(departmentCell);
+          const roleNames = splitCsvList(roleCell);
+          const departmentNames = splitCsvList(departmentCell);
           const validationErrors: string[] = [];
 
           if (!roleNames.length) {
@@ -326,7 +319,7 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
 
             const seenDepartments = new Set<string>();
             departmentNames.forEach((departmentName) => {
-              const key = normalizeName(departmentName);
+              const key = normalize(departmentName);
               if (seenDepartments.has(key)) {
                 validationErrors.push(
                   `Duplicate department in row: ${departmentName}`,
@@ -484,10 +477,10 @@ export default function LinkUsersImport({ facilityId }: LinkUsersImportProps) {
 
           for (const pair of row.pairs) {
             const resolvedRoleId =
-              pair.roleId ?? roleMap[normalizeName(pair.roleName)];
+              pair.roleId ?? roleMap[normalize(pair.roleName)];
             const resolvedDepartmentId =
               pair.departmentId ??
-              departmentMap[normalizeName(pair.departmentName)];
+              departmentMap[normalize(pair.departmentName)];
 
             if (!resolvedDepartmentId || !resolvedRoleId) {
               rowIssues.push(

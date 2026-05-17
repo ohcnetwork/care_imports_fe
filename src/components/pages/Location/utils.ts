@@ -1,8 +1,8 @@
-import { z } from "zod";
 import { LocationForm } from "@/types/location/location";
+import { normalize } from "@/Utils/importHelpers";
+import { z } from "zod";
 
 // ─── Shared Helpers ────────────────────────────────────────────────
-const normalize = (s: string) => s.trim().toLowerCase();
 
 const LOCATION_TYPES = [
   "bed",

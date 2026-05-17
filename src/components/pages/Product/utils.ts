@@ -1,10 +1,5 @@
-import { z } from "zod";
-import { parse, format } from "date-fns";
-import {
-  ProductKnowledgeCreate,
-  ProductKnowledgeStatus,
-  ProductKnowledgeType,
-} from "@/types/inventory/productKnowledge/productKnowledge";
+import { buildHeaderMapping } from "@/internalTypes/common";
+import { MonetaryComponentType } from "@/types/base/monetaryComponent/monetaryComponent";
 import {
   ChargeItemDefinitionCreate,
   ChargeItemDefinitionStatus,
@@ -13,8 +8,13 @@ import {
   ProductCreate,
   ProductStatusOptions,
 } from "@/types/inventory/product/product";
-import { MonetaryComponentType } from "@/types/base/monetaryComponent/monetaryComponent";
-import { normalizeHeader } from "@/internalTypes/common";
+import {
+  ProductKnowledgeCreate,
+  ProductKnowledgeStatus,
+  ProductKnowledgeType,
+} from "@/types/inventory/productKnowledge/productKnowledge";
+import { format, parse } from "date-fns";
+import { z } from "zod";
 
 // ─── Item Types ────────────────────────────────────────────────────
 export const PRODUCT_TYPES = ["medication", "consumable"] as const;
@@ -38,16 +38,10 @@ export const PRODUCT_OPTIONAL_HEADERS = [
 ] as const;
 
 // ─── Header Mapping ────────────────────────────────────────────────
-export const PRODUCT_HEADER_MAP: Record<string, string> = [
+export const PRODUCT_HEADER_MAP: Record<string, string> = buildHeaderMapping([
   ...PRODUCT_REQUIRED_HEADERS,
   ...PRODUCT_OPTIONAL_HEADERS,
-].reduce(
-  (acc, header) => {
-    acc[normalizeHeader(header)] = header;
-    return acc;
-  },
-  {} as Record<string, string>,
-);
+]);
 
 // ─── Zod Schema ────────────────────────────────────────────────────
 export const ProductRowSchema = z

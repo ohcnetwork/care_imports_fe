@@ -7,44 +7,82 @@ export interface CsvParseResult {
 }
 
 export function parseCsvText(csvText: string): CsvParseResult {
-  const lines = csvText.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  const rows = parseCsvRows(csvText);
 
-  if (lines.length === 0) {
+  if (rows.length === 0) {
     return { headers: [], rows: [] };
   }
 
-  const headers = splitCsvLine(lines[0]);
-  const rows = lines.slice(1).map(splitCsvLine);
-
-  return { headers, rows };
+  const headers = rows[0];
+  return { headers, rows: rows.slice(1) };
 }
 
-function splitCsvLine(line: string): string[] {
-  const result: string[] = [];
+/**
+ * Parse CSV text into rows, correctly handling quoted fields that contain
+ * newlines, commas, and escaped quotes.
+ */
+function parseCsvRows(text: string): string[][] {
+  const rows: string[][] = [];
   let current = "";
   let inQuotes = false;
+  let row: string[] = [];
 
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    const nextChar = line[i + 1];
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
 
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        current += '"';
-        i++;
+    if (inQuotes) {
+      if (char === '"') {
+        if (text[i + 1] === '"') {
+          // Escaped quote
+          current += '"';
+          i++;
+        } else {
+          // End of quoted field
+          inQuotes = false;
+        }
       } else {
-        inQuotes = !inQuotes;
+        current += char;
       }
-    } else if (char === "," && !inQuotes) {
-      result.push(current.trim().replace(/^"(.*)"$/, "$1"));
-      current = "";
     } else {
-      current += char;
+      if (char === '"') {
+        inQuotes = true;
+      } else if (char === ",") {
+        row.push(current.trim());
+        current = "";
+      } else if (char === "\r" || char === "\n") {
+        // Skip \n after \r
+        if (char === "\r" && text[i + 1] === "\n") {
+          i++;
+        }
+        row.push(current.trim());
+        current = "";
+        if (row.some((cell) => cell.length > 0)) {
+          rows.push(row);
+        }
+        row = [];
+      } else {
+        current += char;
+      }
     }
   }
 
-  result.push(current.trim().replace(/^"(.*)"$/, "$1"));
-  return result;
+  // Handle last field/row
+  row.push(current.trim());
+  if (row.some((cell) => cell.length > 0)) {
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+/**
+ * Split a comma-separated cell value into an array of trimmed, non-empty strings.
+ */
+export function splitCsvList(value?: string): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 /**
