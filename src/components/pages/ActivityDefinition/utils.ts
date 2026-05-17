@@ -1,5 +1,9 @@
 import { request } from "@/apis/request";
-import { getCellValue, normalizeHeader } from "@/internalTypes/common";
+import {
+  CodeSchema,
+  getCellValue,
+  normalizeHeader,
+} from "@/internalTypes/common";
 import type { ProcessedRow } from "@/internalTypes/importConfig";
 import { ResourceCategoryResourceType } from "@/types/base/resourceCategory/resourceCategory";
 import {
@@ -23,7 +27,6 @@ import { z } from "zod";
 import type { ReviewColumn } from "@/internalTypes/importConfig";
 import type { Code } from "@/types/base/code/code";
 
-import { CodeSchema } from "@/common/utils";
 import {
   buildHeaderMapping,
   validateNoDuplicateSlugs,
@@ -153,14 +156,6 @@ export const ACTIVITY_CLASSIFICATIONS = [
 export const ACTIVITY_KIND = "service_request";
 
 // ─── Helpers ──────────────────────────────────────────────────────
-
-export function splitCellValues(value?: string): string[] {
-  return (value ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 const isNonEmptyString = (value: unknown) =>
   typeof value === "string" && value.trim().length > 0;
 
@@ -684,13 +679,13 @@ export const parseActivityDefinitionCsv = (
       "Body site",
     );
 
-    const diagnosticSystems = splitCellValues(
+    const diagnosticSystems = splitCsvList(
       getCellValue(row, headerMap, "diagnostic_report_system").trim(),
     );
-    const diagnosticCodes = splitCellValues(
+    const diagnosticCodes = splitCsvList(
       getCellValue(row, headerMap, "diagnostic_report_code").trim(),
     );
-    const diagnosticDisplays = splitCellValues(
+    const diagnosticDisplays = splitCsvList(
       getCellValue(row, headerMap, "diagnostic_report_display").trim(),
     );
     const hasDiagnosticValues =
@@ -737,17 +732,17 @@ export const parseActivityDefinitionCsv = (
       diagnostic_report_codes: diagnosticReportCodes,
       derived_from_uri: getCellValue(row, headerMap, "derived_from_uri").trim(),
       category_name: categoryName,
-      specimen_slugs: splitCellValues(
+      specimen_slugs: splitCsvList(
         getCellValue(row, headerMap, "specimen_slugs").trim(),
       ),
-      observation_slugs: splitCellValues(
+      observation_slugs: splitCsvList(
         getCellValue(row, headerMap, "observation_slugs").trim(),
       ),
-      charge_item_slugs: splitCellValues(
+      charge_item_slugs: splitCsvList(
         getCellValue(row, headerMap, "charge_item_slugs").trim(),
       ),
       charge_item_price: chargeItemPrice,
-      location_names: splitCellValues(
+      location_names: splitCsvList(
         getCellValue(row, headerMap, "location_names").trim(),
       ),
       healthcare_service_name: getCellValue(

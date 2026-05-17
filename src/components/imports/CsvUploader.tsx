@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { downloadCsv } from "@/Utils/csv";
+import { csvEscape } from "@/Utils/importHelpers";
 import { AlertCircle, Download, Upload } from "lucide-react";
 import { useCallback, useId, useRef } from "react";
 
@@ -104,8 +105,8 @@ export function CsvUploader({
   const downloadSample = useCallback(() => {
     if (!sampleCsv) return;
     const csvContent = [
-      sampleCsv.headers.join(","),
-      ...sampleCsv.rows?.map((row) => row.join(",")),
+      sampleCsv.headers.map(csvEscape).join(","),
+      ...sampleCsv.rows?.map((row) => row.map(csvEscape).join(",")),
     ].join("\n");
     downloadCsv(sampleFilename, csvContent);
   }, [sampleCsv, sampleFilename]);
