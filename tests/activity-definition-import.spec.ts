@@ -268,7 +268,7 @@ test.describe("Activity Definition Import", () => {
     try {
       await uploadCsvFile(page, csvPath);
       await expectReviewTable(page, { invalidCount: 1 });
-      await expectValidationError(page, /code value is required/i);
+      await expectValidationError(page, /code is required/i);
     } finally {
       cleanupTempFile(csvPath);
     }
