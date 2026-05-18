@@ -411,12 +411,14 @@ export async function validateActivityDefinitionCsvRowsAsync(
     (async () => {
       if (allLocationNames.size === 0) return;
       try {
-        const response = await request(locationApi.list, {
-          pathParams: { facility_id: facilityId },
-          queryParams: { limit: 500 },
-        });
+        const results = await batchFetchAll<{ name: string; id: string }>(
+          locationApi.list,
+          {
+            pathParams: { facility_id: facilityId },
+          },
+        );
         const locationsByName = new Map(
-          response.results.map((loc) => [normalize(loc.name), loc]),
+          results.map((loc) => [normalize(loc.name), loc]),
         );
         for (const name of allLocationNames) {
           const loc = locationsByName.get(normalize(name));
