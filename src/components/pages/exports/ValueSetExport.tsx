@@ -2,8 +2,7 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { Download, Loader2 } from "lucide-react";
 import { useEffect, useMemo } from "react";
 
-import { apis } from "@/apis";
-import type { PaginatedResponse } from "@/apis/types";
+import { request } from "@/apis/request";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,12 +13,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import type { ValueSetRead } from "@/types/valueset/valueset";
-import { downloadCsv, toCsvString } from "@/utils/export";
+import valueSetApi from "@/types/valueSet/valueSetApi";
+import { downloadCsv, toCsvString } from "@/Utils/export";
 import {
   flattenValueSetToRows,
   VALUESET_CSV_HEADERS,
-} from "@/utils/valuesetHelpers";
+} from "@/Utils/valuesetHelpers";
 
 const PAGE_SIZE = 100;
 
@@ -41,10 +40,9 @@ export default function ValueSetExport({ facilityId }: ValueSetExportProps) {
   } = useInfiniteQuery({
     queryKey: ["export", "valueset"],
     queryFn: async ({ pageParam = 0 }) => {
-      return (await apis.valueset.list({
-        limit: PAGE_SIZE,
-        offset: pageParam,
-      })) as unknown as PaginatedResponse<ValueSetRead>;
+      return await request(valueSetApi.list, {
+        queryParams: { limit: PAGE_SIZE, offset: pageParam },
+      });
     },
     initialPageParam: 0,
     getNextPageParam: (lastPage, allPages) => {

@@ -1,24 +1,20 @@
 import ExportCard from "@/components/shared/ExportCard";
-import type { MonetaryComponent } from "@/types/base/monetaryComponent/monetaryComponent";
-import { stripFacilitySlugPrefix } from "@/utils/export";
+import type { ChargeItemDefinitionRead } from "@/types/billing/chargeItemDefinition/chargeItemDefinition";
+import chargeItemDefinitionApi from "@/types/billing/chargeItemDefinition/chargeItemDefinitionApi";
+import { stripFacilitySlugPrefix } from "@/Utils/export";
 
 interface ChargeItemDefinitionExportProps {
   facilityId?: string;
 }
 
-interface ChargeItemDefinitionRead {
-  id: string;
-  title: string;
-  slug: string;
-  description?: string;
-  purpose?: string;
-  status: string;
-  price_components: MonetaryComponent[];
-  slug_config?: { slug_value: string };
-  category?: { title: string };
-}
-
-const CSV_HEADERS = ["title", "slug_value", "description", "purpose", "price", "category"];
+const CSV_HEADERS = [
+  "title",
+  "slug_value",
+  "description",
+  "purpose",
+  "price",
+  "category",
+];
 
 export default function ChargeItemDefinitionExport({
   facilityId,
@@ -30,7 +26,8 @@ export default function ChargeItemDefinitionExport({
       title="Export Charge Item Definitions"
       description="Export all charge item definitions as a CSV file matching the import format."
       queryKey={["charge-item-definition", facilityId]}
-      apiPath={`/api/v1/facility/${facilityId}/charge_item_definition/`}
+      route={chargeItemDefinitionApi.listChargeItemDefinition}
+      pathParams={{ facilityId }}
       csvHeaders={CSV_HEADERS}
       mapRow={(item) => {
         const basePrice =
