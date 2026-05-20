@@ -1,15 +1,23 @@
-import React, { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { ChevronsUpDown } from "lucide-react";
+import React, { useState } from "react";
 
-import { request } from "@/apis/request";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { NavTabs } from "@/components/ui/nav-tabs";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import userApi from "@/types/user/userApi";
+import query from "@/Utils/request/query";
 
 export type ImportTabId =
   | "users"
@@ -96,34 +104,18 @@ export default function ImportsLayout({
   activeTab,
   children,
 }: ImportsLayoutProps) {
-  const [facilities, setFacilities] = useState<FacilityOption[]>([]);
-  const [loadingFacilities, setLoadingFacilities] = useState(true);
-  const [facilityError, setFacilityError] = useState<string | null>(null);
   const [selectedFacilityId, setSelectedFacilityId] = useState<string>("");
+  const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    let active = true;
-
-    const loadFacilities = async () => {
-      try {
-        const response = await request(userApi.currentUser);
-        if (!active) return;
-        setFacilities(response.facilities ?? []);
-        setFacilityError(null);
-      } catch (error) {
-        console.log(error);
-        if (!active) return;
-        setFacilityError("Unable to load facilities");
-      } finally {
-        if (active) setLoadingFacilities(false);
-      }
-    };
-
-    loadFacilities();
-    return () => {
-      active = false;
-    };
-  }, []);
+  const {
+    data: facilities = [],
+    isLoading: loadingFacilities,
+    error: facilityError,
+  } = useQuery({
+    queryKey: ["currentUser", "facilities"],
+    queryFn: query(userApi.currentUser),
+    select: (data: { facilities?: FacilityOption[] }) => data.facilities ?? [],
+  });
 
   const tabs = getTabConfig();
   const requiresFacility =
@@ -146,30 +138,58 @@ export default function ImportsLayout({
             <label className="text-sm font-medium text-gray-700">
               Select Facility
             </label>
-            <Select
-              value={selectedFacilityId || ""}
-              onValueChange={setSelectedFacilityId}
-              disabled={loadingFacilities}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue
-                  placeholder={
-                    loadingFacilities
+            <Popover open={open} onOpenChange={setOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  disabled={loadingFacilities}
+                  className="flex h-9 w-full items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-xs disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <span
+                    className={
+                      selectedFacilityId ? "text-gray-950" : "text-gray-500"
+                    }
+                  >
+                    {loadingFacilities
                       ? "Loading facilities..."
-                      : "Select a facility"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {facilities.map((facility) => (
-                  <SelectItem key={facility.id} value={facility.id}>
-                    {facility.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                      : selectedFacilityId
+                        ? facilities.find((f) => f.id === selectedFacilityId)
+                            ?.name
+                        : "Select a facility"}
+                  </span>
+                  <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="p-0" align="start">
+                <Command>
+                  <CommandInput
+                    placeholder="Search facilities..."
+                    className="outline-hidden border-none ring-0 shadow-none"
+                    autoFocus
+                  />
+                  <CommandList>
+                    <CommandEmpty>No facilities found.</CommandEmpty>
+                    <CommandGroup>
+                      {facilities.map((facility) => (
+                        <CommandItem
+                          key={facility.id}
+                          value={facility.name}
+                          onSelect={() => {
+                            setSelectedFacilityId(facility.id);
+                            setOpen(false);
+                          }}
+                          className="cursor-pointer"
+                        >
+                          {facility.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
             {facilityError && (
-              <p className="text-sm text-red-600">{facilityError}</p>
+              <p className="text-sm text-red-600">Unable to load facilities</p>
             )}
           </div>
           <NavTabs
