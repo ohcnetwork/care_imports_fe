@@ -10,6 +10,7 @@ import { TERMINOLOGY_SYSTEMS, ValueSetStatus } from "@/types/valueSet/valueset";
 import valueSetApi from "@/types/valueSet/valueSetApi";
 import { parseCsvText } from "@/Utils/csv";
 import { isUrlSafeSlug } from "@/Utils/slug";
+import careConfig from "@careConfig";
 
 export const VALID_OPERATORS = [
   "=",
@@ -442,11 +443,18 @@ export function buildValueSetPayload(group: GroupedValueSet): ValueSetCreate {
 
     let item = composeItems.get(key);
     if (!item) {
+      const system = row.data
+        .system as (typeof TERMINOLOGY_SYSTEMS)[keyof typeof TERMINOLOGY_SYSTEMS];
+      const version =
+        system === TERMINOLOGY_SYSTEMS.SNOMED && careConfig.snomedUrl
+          ? careConfig.snomedUrl
+          : undefined;
       item = {
         system: row.data
           .system as (typeof TERMINOLOGY_SYSTEMS)[keyof typeof TERMINOLOGY_SYSTEMS],
         concept: [],
         filter: [],
+        version: version,
       };
       composeItems.set(key, item);
     }

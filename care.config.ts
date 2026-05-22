@@ -17,6 +17,15 @@ const resolveApiUrl = (): string => {
   return coreEnv?.apiUrl ?? env.REACT_CARE_API_URL ?? "";
 };
 
+const resolveSnomedUrl = (): string => {
+  const coreEnv = (
+    window as Window & { __CORE_ENV__?: { valueSetSnomedVersion?: string } }
+  ).__CORE_ENV__;
+  return (
+    coreEnv?.valueSetSnomedVersion ?? env.REACT_VALUESET_SNOMED_VERSION ?? ""
+  );
+};
+
 const careConfig = {
   apiUrl: resolveApiUrl(),
   encounterClasses: (env.REACT_ALLOWED_ENCOUNTER_CLASSES?.split(",") ??
@@ -58,6 +67,7 @@ const careConfig = {
       return Decimal[method] as Decimal.Rounding;
     })(),
   },
+  snomedUrl: resolveSnomedUrl(),
 } as const;
 
 export default careConfig;
