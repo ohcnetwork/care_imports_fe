@@ -202,8 +202,11 @@ function ObservationDefinitionExportInner({
     queryKey: ["export", "observation-definition", facilityId],
     queryFn: async ({ pageParam = 0 }) => {
       return await request(observationDefinitionApi.listObservationDefinition, {
-        pathParams: { facilityId },
-        queryParams: { limit: PAGE_SIZE, offset: pageParam },
+        queryParams: {
+          facility: facilityId,
+          limit: PAGE_SIZE,
+          offset: pageParam,
+        },
       });
     },
     initialPageParam: 0,
