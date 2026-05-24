@@ -4,13 +4,24 @@ import { csvEscape } from "@/Utils/importHelpers";
  * Constants and sample data for Observation Definition CSV imports.
  *
  * The import uses two CSVs:
- *  1. Definitions CSV — one row per observation definition (no component columns).
+ *  1. Definitions CSV — multiple rows per definition, one per qualified range.
+ * First row populated with definition-level fields; subsequent rows for same definition have empty definition-level fields and only component/range fields populated.
  *  2. Components CSV  — one row per component range band, linked via observation_slug.
  */
 
 /* ------------------------------------------------------------------ */
 /*  Definitions CSV                                                    */
 /* ------------------------------------------------------------------ */
+
+export const OBSERVATION_QUALIFIED_RANGE_CSV_HEADERS = [
+  "age_min",
+  "age_max",
+  "age_op",
+  "gender",
+  "range_display",
+  "range_min",
+  "range_max",
+];
 
 export const OBSERVATION_DEFINITION_CSV_HEADERS = [
   "title",
@@ -32,6 +43,7 @@ export const OBSERVATION_DEFINITION_CSV_HEADERS = [
   "permitted_unit_code",
   "permitted_unit_display",
   "derived_from_uri",
+  ...OBSERVATION_QUALIFIED_RANGE_CSV_HEADERS,
 ] as const;
 
 /* ------------------------------------------------------------------ */
@@ -47,13 +59,7 @@ export const COMPONENT_CSV_HEADERS = [
   "unit_system",
   "unit_code",
   "unit_display",
-  "age_min",
-  "age_max",
-  "age_op",
-  "gender",
-  "range_display",
-  "range_min",
-  "range_max",
+  ...OBSERVATION_QUALIFIED_RANGE_CSV_HEADERS,
 ] as const;
 
 /* ------------------------------------------------------------------ */

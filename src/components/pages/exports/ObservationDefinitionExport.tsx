@@ -24,6 +24,7 @@ import {
 import {
   COMPONENT_CSV_HEADERS,
   OBSERVATION_DEFINITION_CSV_HEADERS,
+  OBSERVATION_QUALIFIED_RANGE_CSV_HEADERS,
 } from "@/Utils/observationDefinitionConstants";
 
 interface ObservationDefinitionExportProps {
@@ -39,11 +40,18 @@ const PAGE_SIZE = 100;
 function buildDefinitionRows(
   items: ObservationDefinitionReadSpec[],
 ): string[][] {
-  return items.map((item) => {
+  const rows: string[][] = [];
+  const QUALIFIED_RANGE_CELL_COUNT =
+    OBSERVATION_QUALIFIED_RANGE_CSV_HEADERS.length;
+  const baseDefinitionCellCount =
+    OBSERVATION_DEFINITION_CSV_HEADERS.length - QUALIFIED_RANGE_CELL_COUNT;
+
+  for (const item of items) {
     const slug = stripFacilitySlugPrefix(
       item.slug_config?.slug_value ?? item.slug ?? "",
     );
-    return [
+
+    const baseCells = [
       item.title ?? "",
       slug,
       item.description ?? "",
@@ -64,7 +72,76 @@ function buildDefinitionRows(
       item.permitted_unit?.display ?? "",
       item.derived_from_uri ?? "",
     ];
-  });
+    const continuationBaseCells = [
+      item.title ?? "",
+      slug,
+      ...Array(Math.max(baseDefinitionCellCount - 2, 0)).fill(""),
+    ];
+
+    const qualifiedRanges = item.qualified_ranges ?? [];
+    if (qualifiedRanges.length === 0) {
+      rows.push([
+        ...baseCells,
+        ...Array(QUALIFIED_RANGE_CELL_COUNT).fill(""),
+      ]);
+      continue;
+    }
+
+    let isFirstRangeRow = true;
+    for (const qr of qualifiedRanges) {
+      let ageMin = "";
+      let ageMax = "";
+      let ageOp = "";
+      let gender = "";
+
+      for (const cond of qr.conditions ?? []) {
+        if (cond.metric === "patient_age") {
+          const val = cond.value as {
+            min?: number;
+            max?: number;
+            value_type?: string;
+          };
+          ageMin = val.min != null ? String(val.min) : "";
+          ageMax = val.max != null ? String(val.max) : "";
+          ageOp = val.value_type ?? "";
+        } else if (cond.metric === "patient_gender") {
+          gender = String(cond.value ?? "");
+        }
+      }
+
+      const rangeBands = qr.ranges ?? [];
+      if (rangeBands.length === 0) {
+        rows.push([
+          ...(isFirstRangeRow ? baseCells : continuationBaseCells),
+          ageMin,
+          ageMax,
+          ageOp,
+          gender,
+          "",
+          "",
+          "",
+        ]);
+        isFirstRangeRow = false;
+        continue;
+      }
+
+      for (const band of rangeBands) {
+        rows.push([
+          ...(isFirstRangeRow ? baseCells : continuationBaseCells),
+          ageMin,
+          ageMax,
+          ageOp,
+          gender,
+          band.interpretation?.display ?? "",
+          band.min != null ? String(band.min) : "",
+          band.max != null ? String(band.max) : "",
+        ]);
+        isFirstRangeRow = false;
+      }
+    }
+  }
+
+  return rows;
 }
 
 /**
